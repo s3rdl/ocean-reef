@@ -15,10 +15,9 @@ from pathlib import Path
 from typing import Any
 
 from fastapi import FastAPI, File, Form, Request, UploadFile
-from fastapi.responses import HTMLResponse, JSONResponse, Response
+from fastapi.responses import HTMLResponse, JSONResponse, Response, FileResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
-
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 APP_DIR = BASE_DIR / "app"
@@ -332,23 +331,24 @@ def run_openscad(scad_path: Path, stl_path: Path) -> tuple[bool, str]:
 
     return True, ""
 
-
 def convert_stl_to_glb(stl_path: Path, glb_path: Path) -> tuple[bool, str]:
     try:
         import trimesh
 
-        mesh_or_scene = trimesh.load_mesh(str(stl_path))
-        if mesh_or_scene is None:
-            return False, "Trimesh failed to load the STL."
+        mesh = trimesh.load(str(stl_path), force='mesh')
 
-        glb_bytes = trimesh.exchange.gltf.export_glb(mesh_or_scene)
-        glb_path.write_bytes(glb_bytes)
+        if mesh is None or mesh.vertices.shape[0] == 0:
+            return False, "Empty mesh"
+
+        # Normalize (important for viewer!)
+        mesh.remove_unreferenced_vertices()
+        mesh.remove_degenerate_faces()
+
+        mesh.export(glb_path, file_type='glb')
+
         return True, ""
-    except ImportError:
-        return False, "GLB conversion requires trimesh and pygltflib. Install them with: pip install trimesh pygltflib"
-    except Exception as exc:
-        return False, f"GLB conversion failed: {exc}"
-
+    except Exception as e:
+        return False, f"GLB conversion failed: {e}"
 
 def build_summary(agg: dict[str, Any]) -> dict[str, Any]:
     rows = []
@@ -660,3 +660,9 @@ async def get_job(job_id: str) -> JSONResponse:
     if job is None:
         return JSONResponse({"error": "Job not found."}, status_code=404)
     return JSONResponse(job)
+
+
+@app.get("/output/{filename}")
+async def serve_output(filename: str):
+    path = OUTPUT_DIR / filename
+    return FileResponse(path, media_type="model/gltf-binary")
