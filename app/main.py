@@ -333,6 +333,23 @@ def run_openscad(scad_path: Path, stl_path: Path) -> tuple[bool, str]:
     return True, ""
 
 
+def convert_stl_to_glb(stl_path: Path, glb_path: Path) -> tuple[bool, str]:
+    try:
+        import trimesh
+
+        mesh_or_scene = trimesh.load_mesh(str(stl_path))
+        if mesh_or_scene is None:
+            return False, "Trimesh failed to load the STL."
+
+        glb_bytes = trimesh.exchange.gltf.export_glb(mesh_or_scene)
+        glb_path.write_bytes(glb_bytes)
+        return True, ""
+    except ImportError:
+        return False, "GLB conversion requires trimesh and pygltflib. Install them with: pip install trimesh pygltflib"
+    except Exception as exc:
+        return False, f"GLB conversion failed: {exc}"
+
+
 def build_summary(agg: dict[str, Any]) -> dict[str, Any]:
     rows = []
     for region in REGION_ORDER:
@@ -401,9 +418,11 @@ def process_job(job_id: str, request_data: dict[str, Any]) -> None:
         title = f"Ocean Reef Prototype - {demo_file}"
         main_scad_name = f"reef_{job_id}.scad"
         main_stl_name = f"reef_{job_id}.stl"
+        main_glb_name = f"reef_{job_id}.glb"
 
         main_scad_path = GENERATED_DIR / main_scad_name
         main_stl_path = OUTPUT_DIR / main_stl_name
+        main_glb_path = OUTPUT_DIR / main_glb_name
 
         main_scad_path.write_text(
             render_scad(SCAD_TEMPLATE, model_data, title=title, region_filter=""),
@@ -418,6 +437,7 @@ def process_job(job_id: str, request_data: dict[str, Any]) -> None:
             "export_mode": export_mode,
             "scad_url": f"/generated/{main_scad_name}",
             "stl_url": None,
+            "glb_url": None,
             "zip_url": None,
             "region_files": [],
             "params": {
@@ -439,13 +459,22 @@ def process_job(job_id: str, request_data: dict[str, Any]) -> None:
             if not ok:
                 update_job(job_id, status="error", message=message, result=result, summary=summary)
                 return
+
             result["stl_url"] = f"/output/{main_stl_name}"
+
+            update_job(job_id, message="Converting STL to GLB...")
+            ok, message = convert_stl_to_glb(main_stl_path, main_glb_path)
+            if ok:
+                result["glb_url"] = f"/output/{main_glb_name}"
+            else:
+                result["glb_conversion_warning"] = message
+
             update_job(job_id, status="done", message="STL generated.", result=result, summary=summary)
             return
 
         if export_mode == "separate_regions_zip":
             update_job(job_id, message="Rendering separate region files...")
-            region_files: list[dict[str, str]] = []
+            region_files: list[dict[str, str | None]] = []
             zip_name = f"reef_bundle_{job_id}.zip"
             zip_path = OUTPUT_DIR / zip_name
 
@@ -473,9 +502,11 @@ def process_job(job_id: str, request_data: dict[str, Any]) -> None:
                     region_slug = branch["region"].lower().replace(" ", "_").replace("-", "_")
                     region_scad_name = f"reef_{job_id}_{region_slug}.scad"
                     region_stl_name = f"reef_{job_id}_{region_slug}.stl"
+                    region_glb_name = f"reef_{job_id}_{region_slug}.glb"
 
                     region_scad_path = GENERATED_DIR / region_scad_name
                     region_stl_path = OUTPUT_DIR / region_stl_name
+                    region_glb_path = OUTPUT_DIR / region_glb_name
 
                     region_scad_path.write_text(
                         render_scad(
@@ -492,13 +523,21 @@ def process_job(job_id: str, request_data: dict[str, Any]) -> None:
                         update_job(job_id, status="error", message=f"{branch['region']}: {message}", result=result, summary=summary)
                         return
 
+                    region_glb_url = None
+                    ok, glb_message = convert_stl_to_glb(region_stl_path, region_glb_path)
+                    if ok:
+                        region_glb_url = f"/output/{region_glb_name}"
+
                     shutil.copy2(region_scad_path, temp_dir / region_scad_name)
                     shutil.copy2(region_stl_path, temp_dir / region_stl_name)
+                    if ok and region_glb_path.exists():
+                        shutil.copy2(region_glb_path, temp_dir / region_glb_name)
 
                     region_files.append({
                         "region": branch["region"],
                         "scad_url": f"/generated/{region_scad_name}",
                         "stl_url": f"/output/{region_stl_name}",
+                        "glb_url": region_glb_url,
                     })
 
                 update_job(job_id, message="Packaging ZIP...")
@@ -509,6 +548,12 @@ def process_job(job_id: str, request_data: dict[str, Any]) -> None:
 
                 result["region_files"] = region_files
                 result["zip_url"] = f"/output/{zip_name}"
+
+                if region_files:
+                    first_glb = next((r["glb_url"] for r in region_files if r.get("glb_url")), None)
+                    if first_glb:
+                        result["glb_url"] = first_glb
+
                 update_job(job_id, status="done", message="ZIP bundle generated.", result=result, summary=summary)
                 return
             finally:
@@ -557,7 +602,7 @@ async def generate(
 ) -> JSONResponse:
     if upload_file and upload_file.filename:
         return JSONResponse(
-            {"error": "Phase D currently supports demo datasets only in async mode."},
+            {"error": "Async mode currently supports demo datasets only."},
             status_code=400,
         )
 

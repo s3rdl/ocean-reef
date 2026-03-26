@@ -1,5 +1,5 @@
 <!DOCTYPE html>
-<html lang="de">
+<html lang="en">
 <head>
   <meta charset="utf-8">
   <meta name="viewport" content="width=device-width, initial-scale=1">
@@ -163,10 +163,9 @@
       min-height: 120px;
     }
 
-    #preview-canvas {
+    model-viewer {
       width: 100%;
       height: 560px;
-      display: block;
       border-radius: 16px;
       border: 1px solid var(--border);
       background: #eef4fb;
@@ -188,6 +187,8 @@
       }
     }
   </style>
+
+  <script type="module" src="https://ajax.googleapis.com/ajax/libs/model-viewer/3.5.0/model-viewer.min.js"></script>
 </head>
 <body>
   <div class="wrap">
@@ -245,10 +246,18 @@
             <div id="preview-status">No preview yet.</div>
           </div>
           <div class="hint">
-            Rotate: left mouse · Pan: right mouse · Zoom: wheel
+            Rotate: drag · Zoom: wheel / pinch
           </div>
         </div>
-        <canvas id="preview-canvas"></canvas>
+
+        <model-viewer
+          id="glb-viewer"
+          camera-controls
+          touch-action="pan-y"
+          shadow-intensity="1"
+          exposure="1"
+          auto-rotate>
+        </model-viewer>
       </section>
     </div>
   </div>
@@ -260,6 +269,8 @@
     var summaryBox = document.getElementById("summary-box");
     var jobInfoBox = document.getElementById("job-info");
     var button = document.getElementById("generate-button");
+    var previewStatus = document.getElementById("preview-status");
+    var glbViewer = document.getElementById("glb-viewer");
 
     var currentJobId = null;
     var pollTimer = null;
@@ -284,6 +295,36 @@
       }
     }
 
+    function setPreviewStatus(text) {
+      previewStatus.textContent = text;
+    }
+
+    function clearPreview() {
+      glbViewer.removeAttribute("src");
+    }
+
+    function updateGlbPreview(url) {
+      if (!url) {
+        setPreviewStatus("No GLB preview available.");
+        clearPreview();
+        return;
+      }
+
+      var absoluteUrl = new URL(url, window.location.origin).toString();
+      var cacheBustedUrl = absoluteUrl + (absoluteUrl.includes("?") ? "&" : "?") + "t=" + Date.now();
+
+      setPreviewStatus("Loading GLB preview...");
+      glbViewer.src = cacheBustedUrl;
+    }
+
+    glbViewer.addEventListener("load", function () {
+      setPreviewStatus("GLB preview loaded.");
+    });
+
+    glbViewer.addEventListener("error", function () {
+      setPreviewStatus("Failed to load GLB preview.");
+    });
+
     function renderDownloads(result) {
       downloadsBox.innerHTML = "";
 
@@ -300,6 +341,15 @@
         a1.target = "_blank";
         a1.textContent = "Download STL";
         downloadsBox.appendChild(a1);
+        hasLinks = true;
+      }
+
+      if (result.glb_url) {
+        var aGlb = document.createElement("a");
+        aGlb.href = result.glb_url;
+        aGlb.target = "_blank";
+        aGlb.textContent = "Download GLB";
+        downloadsBox.appendChild(aGlb);
         hasLinks = true;
       }
 
@@ -324,6 +374,16 @@
       if (result.region_files && result.region_files.length) {
         for (var i = 0; i < result.region_files.length; i++) {
           var rf = result.region_files[i];
+
+          if (rf.glb_url) {
+            var arGlb = document.createElement("a");
+            arGlb.href = rf.glb_url;
+            arGlb.target = "_blank";
+            arGlb.textContent = rf.region + " GLB";
+            downloadsBox.appendChild(arGlb);
+            hasLinks = true;
+          }
+
           if (rf.stl_url) {
             var ar = document.createElement("a");
             ar.href = rf.stl_url;
@@ -367,12 +427,12 @@
     function choosePreviewUrl(result) {
       if (!result) return null;
 
-      if (result.stl_url) return result.stl_url;
+      if (result.glb_url) return result.glb_url;
 
       if (result.region_files && result.region_files.length > 0) {
         for (var i = 0; i < result.region_files.length; i++) {
-          if (result.region_files[i].stl_url) {
-            return result.region_files[i].stl_url;
+          if (result.region_files[i].glb_url) {
+            return result.region_files[i].glb_url;
           }
         }
       }
@@ -413,20 +473,17 @@
           }, 1500);
           return;
         }
+
         if (data.status === "done") {
           setStatus(data.message || "Job finished.", "success");
           setBusy(false);
           stopPolling();
 
           var previewUrl = choosePreviewUrl(data.result);
-          console.log("[ui] preview URL candidate:", previewUrl);
-          rawBox.textContent = JSON.stringify(data, null, 2);
+          updateGlbPreview(previewUrl);
 
-          if (previewUrl && window.updatePreview) {
-            document.getElementById("preview-status").textContent = "Starting preview for: " + previewUrl;
-            window.updatePreview(previewUrl);
-          } else {
-            document.getElementById("preview-status").textContent = "No STL preview URL available.";
+          if (data.result && data.result.glb_conversion_warning && !previewUrl) {
+            setPreviewStatus(data.result.glb_conversion_warning);
           }
           return;
         }
@@ -435,7 +492,8 @@
           setStatus(data.message || "Job failed.", "error");
           setBusy(false);
           stopPolling();
-          document.getElementById("preview-status").textContent = "Preview unavailable because the job failed.";
+          setPreviewStatus("Preview unavailable because the job failed.");
+          clearPreview();
           return;
         }
 
@@ -471,7 +529,8 @@
       summaryBox.textContent = "No summary yet.";
       jobInfoBox.textContent = "Submitting...";
       rawBox.textContent = "Sending /generate request...";
-      document.getElementById("preview-status").textContent = "Waiting for finished STL...";
+      setPreviewStatus("Waiting for finished GLB...");
+      clearPreview();
 
       var formData = new FormData();
       formData.append("demo_file", demoFile);
@@ -520,7 +579,5 @@
 
     button.onclick = startGenerate;
   </script>
-
-  <script type="module" src="/static/js/preview.js"></script>
 </body>
 </html>
