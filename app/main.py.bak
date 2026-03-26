@@ -1,0 +1,204 @@
+import json
+import uuid
+from pathlib import Path
+from typing import Any
+
+from fastapi import FastAPI, File, Form, HTTPException, Request, UploadFile
+from fastapi.responses import FileResponse, HTMLResponse
+from fastapi.templating import Jinja2Templates
+
+from app.generator import (
+    DATA_DIR,
+    EXPORT_MODES,
+    PRESETS,
+    GeneratorError,
+    GeneratorParams,
+    generate_from_signatures,
+    load_signatures,
+    summarize_signatures,
+)
+
+
+app = FastAPI(title="Ocean Reef Prototype UI")
+templates = Jinja2Templates(directory=str(Path(__file__).resolve().parent / "templates"))
+
+LAST_RESULTS: dict[str, dict[str, Any]] = {}
+
+
+def list_demo_datasets() -> list[dict[str, str]]:
+    datasets = []
+    for path in sorted(DATA_DIR.glob("*.json")):
+        datasets.append({"name": path.name, "path": str(path)})
+    return datasets
+
+
+def read_uploaded_signatures(upload: UploadFile) -> list[dict[str, Any]]:
+    try:
+        raw = upload.file.read().decode("utf-8")
+        data = json.loads(raw)
+    except Exception as exc:
+        raise GeneratorError(f"Could not parse uploaded JSON: {exc}") from exc
+
+    if not isinstance(data, list):
+        raise GeneratorError("Uploaded JSON must be a list of signature objects.")
+    return data
+
+
+def default_form_values() -> dict[str, Any]:
+    return {
+        "dataset_name": "signatures_demo_010k.json",
+        "preset": "balanced",
+        "branch_density": 1.0,
+        "branch_thickness": 1.0,
+        "height_boost": 1.0,
+        "base_scale": 1.0,
+        "title": "Ocean Reef Prototype",
+        "export_mode": "stl",
+    }
+
+
+@app.get("/", response_class=HTMLResponse)
+async def index(request: Request):
+    return templates.TemplateResponse(
+        "index.html",
+        {
+            "request": request,
+            "presets": PRESETS,
+            "datasets": list_demo_datasets(),
+            "export_modes": EXPORT_MODES,
+            "result": None,
+            "error": None,
+            "form_values": default_form_values(),
+        },
+    )
+
+
+@app.post("/generate", response_class=HTMLResponse)
+async def generate(
+    request: Request,
+    title: str = Form("Ocean Reef Prototype"),
+    dataset_name: str = Form("signatures_demo_010k.json"),
+    preset: str = Form("balanced"),
+    branch_density: float = Form(1.0),
+    branch_thickness: float = Form(1.0),
+    height_boost: float = Form(1.0),
+    base_scale: float = Form(1.0),
+    export_mode: str = Form("stl"),
+    upload_file: UploadFile | None = File(default=None),
+):
+    form_values = {
+        "dataset_name": dataset_name,
+        "preset": preset,
+        "branch_density": branch_density,
+        "branch_thickness": branch_thickness,
+        "height_boost": height_boost,
+        "base_scale": base_scale,
+        "title": title,
+        "export_mode": export_mode,
+    }
+
+    try:
+        if upload_file is not None and upload_file.filename:
+            signatures = read_uploaded_signatures(upload_file)
+            source_label = f"Upload: {upload_file.filename}"
+        else:
+            dataset_path = DATA_DIR / dataset_name
+            if not dataset_path.exists():
+                raise GeneratorError(f"Dataset not found: {dataset_name}")
+            signatures = load_signatures(dataset_path)
+            source_label = f"Demo dataset: {dataset_name}"
+
+        params = GeneratorParams(
+            branch_density=branch_density,
+            branch_thickness=branch_thickness,
+            height_boost=height_boost,
+            base_scale=base_scale,
+            export_mode=export_mode,
+            render_stl=(export_mode != "scad_only"),
+        )
+
+        run_id = f"reef_{uuid.uuid4().hex[:8]}"
+        result = generate_from_signatures(signatures, title=title, run_id=run_id, params=params)
+        LAST_RESULTS[run_id] = {
+            "source_label": source_label,
+            "result": result,
+        }
+
+        return templates.TemplateResponse(
+            "index.html",
+            {
+                "request": request,
+                "presets": PRESETS,
+                "datasets": list_demo_datasets(),
+                "export_modes": EXPORT_MODES,
+                "result": {
+                    "run_id": result.run_id,
+                    "title": result.title,
+                    "summary": result.summary,
+                    "params": result.params,
+                    "scad_filename": result.scad_filename,
+                    "stl_filename": result.stl_filename,
+                    "bundle_filename": result.bundle_filename,
+                    "source_label": source_label,
+                    "openscad_available": result.openscad_available,
+                    "region_outputs": result.region_outputs or [],
+                    "export_mode": export_mode,
+                },
+                "error": None,
+                "form_values": form_values,
+            },
+        )
+    except GeneratorError as exc:
+        return templates.TemplateResponse(
+            "index.html",
+            {
+                "request": request,
+                "presets": PRESETS,
+                "datasets": list_demo_datasets(),
+                "export_modes": EXPORT_MODES,
+                "result": None,
+                "error": str(exc),
+                "form_values": form_values,
+            },
+            status_code=400,
+        )
+
+
+@app.get("/download/scad/{run_id}")
+async def download_scad(run_id: str):
+    item = LAST_RESULTS.get(run_id)
+    if item is None:
+        raise HTTPException(status_code=404, detail="Run not found.")
+    result = item["result"]
+    return FileResponse(result.scad_path, filename=result.scad_filename, media_type="application/octet-stream")
+
+
+@app.get("/download/stl/{run_id}")
+async def download_stl(run_id: str):
+    item = LAST_RESULTS.get(run_id)
+    if item is None:
+        raise HTTPException(status_code=404, detail="Run not found.")
+    result = item["result"]
+    if result.stl_path is None:
+        raise HTTPException(status_code=404, detail="No STL available for this run.")
+    return FileResponse(result.stl_path, filename=result.stl_filename, media_type="application/sla")
+
+
+@app.get("/download/bundle/{run_id}")
+async def download_bundle(run_id: str):
+    item = LAST_RESULTS.get(run_id)
+    if item is None:
+        raise HTTPException(status_code=404, detail="Run not found.")
+    result = item["result"]
+    if result.bundle_path is None:
+        raise HTTPException(status_code=404, detail="No bundle available for this run.")
+    return FileResponse(result.bundle_path, filename=result.bundle_filename, media_type="application/zip")
+
+
+@app.get("/summary/{dataset_name}")
+async def dataset_summary(dataset_name: str):
+    dataset_path = DATA_DIR / dataset_name
+    if not dataset_path.exists():
+        raise HTTPException(status_code=404, detail="Dataset not found.")
+    data = load_signatures(dataset_path)
+    return summarize_signatures(data)

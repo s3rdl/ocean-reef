@@ -1,0 +1,15 @@
+[
+  {"id": "1", "region": "Europe", "timestamp": "2026-03-20T08:00:00Z"},
+  {"id": "2", "region": "Europe", "timestamp": "2026-03-20T08:10:00Z"},
+  {"id": "3", "region": "Europe", "timestamp": "2026-03-20T08:12:00Z"},
+  {"id": "4", "region": "Africa", "timestamp": "2026-03-20T09:00:00Z"},
+  {"id": "5", "region": "Africa", "timestamp": "2026-03-20T09:02:00Z"},
+  {"id": "6", "region": "Asia-Pacific", "timestamp": "2026-03-20T09:10:00Z"},
+  {"id": "7", "region": "Asia-Pacific", "timestamp": "2026-03-20T09:20:00Z"},
+  {"id": "8", "region": "Asia-Pacific", "timestamp": "2026-03-20T09:21:00Z"},
+  {"id": "9", "region": "North America", "timestamp": "2026-03-20T09:30:00Z"},
+  {"id": "10", "region": "North America", "timestamp": "2026-03-20T09:31:00Z"},
+  {"id": "11", "region": "South America", "timestamp": "2026-03-20T09:40:00Z"},
+  {"id": "12", "region": "Oceania", "timestamp": "2026-03-20T09:50:00Z"},
+  {"id": "13", "region": "Oceania", "timestamp": "2026-03-20T09:51:00Z"}
+]

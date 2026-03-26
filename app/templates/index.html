@@ -1,0 +1,309 @@
+<!DOCTYPE html> <html lang="de"> <head> <meta 
+  charset="utf-8"> <meta name="viewport" 
+  content="width=device-width, initial-scale=1"> 
+  <title>Ocean Prototype UI – Phase D</title> 
+  <style>
+    :root {
+      --bg: #f5f7fb; --panel: #ffffff; --text: #1f2937; 
+      --muted: #6b7280; --border: #dbe3ef; --accent: 
+      #2563eb;
+      --accent-soft: #dbeafe; --success: #166534; 
+      --success-bg: #dcfce7; --error: #991b1b; 
+      --error-bg: #fee2e2; --busy: #16a34a; 
+      --busy-glow: rgba(22, 163, 74, 0.35);
+    }
+    * { box-sizing: border-box; } body { font-family: 
+      system-ui, sans-serif; margin: 0; padding: 24px; 
+      background: var(--bg); color: var(--text);
+    }
+    .wrap { max-width: 980px; margin: 0 auto;
+    }
+    .card { background: var(--panel); border: 1px solid 
+      var(--border); border-radius: 16px; padding: 
+      18px; margin-bottom: 16px;
+    }
+    h1, h2, h3 { margin-top: 0;
+    }
+    label { display: block; font-weight: 700; margin: 
+      14px 0 6px;
+    }
+    select, input[type="number"], button { width: 100%; 
+      font: inherit; padding: 10px 12px; border-radius: 
+      12px; border: 1px solid #cfd8e3; box-sizing: 
+      border-box;
+    }
+    button { border: 0; background: var(--accent); 
+      color: white; font-weight: 700; cursor: pointer; 
+      margin-top: 16px; transition: transform 0.15s 
+      ease, box-shadow 0.2s ease, background-color 0.2s 
+      ease;
+    }
+    button:hover:not(:disabled) { transform: 
+      translateY(-1px);
+    }
+    button.busy { background: var(--busy); animation: 
+      breathe 1.8s ease-in-out infinite; box-shadow: 0 
+      0 0 0 var(--busy-glow);
+    }
+    @keyframes breathe { 0% { transform: scale(1); 
+        box-shadow: 0 0 0 0 rgba(22, 163, 74, 0.20); 
+        filter: brightness(0.96);
+      }
+      50% { transform: scale(1.015); box-shadow: 0 0 0 
+        12px rgba(22, 163, 74, 0.00); filter: 
+        brightness(1.08);
+      }
+      100% { transform: scale(1); box-shadow: 0 0 0 0 
+        rgba(22, 163, 74, 0.00); filter: 
+        brightness(0.96);
+      }
+    }
+    .status { white-space: pre-wrap; background: 
+      #eef2ff;
+      color: #3730a3; padding: 12px; border-radius: 
+      12px; min-height: 68px;
+    }
+    .status.success { background: var(--success-bg); 
+      color: var(--success);
+    }
+    .status.error { background: var(--error-bg); color: 
+      var(--error);
+    }
+    .hint { color: var(--muted); font-size: 14px;
+    }
+    .downloads a { display: inline-block; margin: 6px 
+      8px 0 0; padding: 8px 12px; background: 
+      var(--accent-soft); color: var(--accent); 
+      text-decoration: none; border-radius: 10px; 
+      font-weight: 600;
+    }
+    .summary-item { display: flex; justify-content: 
+      space-between; border-bottom: 1px solid 
+      var(--border); padding: 8px 0; font-size: 14px;
+    }
+    pre { white-space: pre-wrap; word-break: 
+      break-word; background: #f8fafc; border: 1px 
+      solid #e5e7eb; border-radius: 12px; padding: 
+      12px; overflow: auto;
+    }
+  </style> </head> <body> <div class="wrap"> <div 
+    class="card">
+      <h1>Ocean Prototype UI – Phase D</h1> <div 
+      class="hint">
+        Asynchrone Jobs mit Status-Polling. Kein 
+        blockierendes Warten mehr.
+      </div> <label for="demo_file">Demo 
+      dataset</label> <select id="demo_file">
+        <option value="">-- choose demo file 
+        --</option> {% for item in demo_files %} 
+        <option value="{{ item }}">{{ item }}</option> 
+        {% endfor %}
+      </select> <label for="preset">Preset</label> 
+      <select id="preset">
+        {% for key, preset in presets.items() %} 
+        <option value="{{ key }}">{{ preset.label 
+        }}</option>
+        {% endfor %} </select> <label 
+      for="export_mode">Export mode</label> <select 
+      id="export_mode">
+        <option value="single_stl">Single STL</option> 
+        <option value="separate_regions_zip">Separate 
+        regions ZIP</option> <option 
+        value="scad_only">SCAD only</option>
+      </select> <label for="source_max">Source 
+      max</label> <input id="source_max" type="number" 
+      min="1000" step="1000" value="100000"> <button 
+      id="generate-button" 
+      type="button">Generate</button>
+    </div> <div class="card"> <h2>Status</h2> <div 
+      id="status-box" class="status">Ready.</div>
+    </div> <div class="card"> <h2>Job Info</h2> <div 
+      id="job-info" class="hint">No job yet.</div>
+    </div> <div class="card"> <h2>Downloads</h2> <div 
+      id="downloads" class="downloads">No downloads 
+      yet.</div>
+    </div> <div class="card"> <h2>Summary</h2> <div 
+      id="summary-box" class="hint">No summary 
+      yet.</div>
+    </div> <div class="card"> <h2>Raw Response</h2> 
+      <pre id="raw-response">Script loaded.</pre>
+    </div> </div> <script> var statusBox = 
+    document.getElementById("status-box"); var rawBox = 
+    document.getElementById("raw-response"); var 
+    downloadsBox = 
+    document.getElementById("downloads"); var 
+    summaryBox = 
+    document.getElementById("summary-box"); var 
+    jobInfoBox = document.getElementById("job-info"); 
+    var button = 
+    document.getElementById("generate-button"); var 
+    currentJobId = null; var pollTimer = null; function 
+    setStatus(text, kind) {
+      statusBox.className = "status"; if (kind) { 
+        statusBox.className += " " + kind;
+      }
+      statusBox.textContent = text;
+    }
+    function setBusy(isBusy) { if (isBusy) { 
+        button.disabled = true; button.className = 
+        "busy"; button.textContent = "Generating...";
+      } else {
+        button.disabled = false; button.className = ""; 
+        button.textContent = "Generate";
+      }
+    }
+    function renderDownloads(result) { 
+      downloadsBox.innerHTML = ""; if (!result) {
+        downloadsBox.textContent = "No downloads yet."; 
+        return;
+      }
+      var hasLinks = false; if (result.stl_url) { var 
+        a1 = document.createElement("a"); a1.href = 
+        result.stl_url; a1.target = "_blank"; 
+        a1.textContent = "Download STL"; 
+        downloadsBox.appendChild(a1); hasLinks = true;
+      }
+      if (result.scad_url) { var a2 = 
+        document.createElement("a"); a2.href = 
+        result.scad_url; a2.target = "_blank"; 
+        a2.textContent = "Download SCAD"; 
+        downloadsBox.appendChild(a2); hasLinks = true;
+      }
+      if (result.zip_url) { var a3 = 
+        document.createElement("a"); a3.href = 
+        result.zip_url; a3.target = "_blank"; 
+        a3.textContent = "Download ZIP"; 
+        downloadsBox.appendChild(a3); hasLinks = true;
+      }
+      if (result.region_files && 
+      result.region_files.length) {
+        for (var i = 0; i < result.region_files.length; 
+        i++) {
+          var rf = result.region_files[i]; var ar = 
+          document.createElement("a"); ar.href = 
+          rf.stl_url; ar.target = "_blank"; 
+          ar.textContent = rf.region + " STL"; 
+          downloadsBox.appendChild(ar); hasLinks = 
+          true;
+        }
+      }
+      if (!hasLinks) { downloadsBox.textContent = "No 
+        downloads in result.";
+      }
+    }
+    function renderSummary(summary) { if (!summary) { 
+        summaryBox.textContent = "No summary yet."; 
+        return;
+      }
+      var html = ""; html += "<div><strong>Total 
+      signatures:</strong> " + summary.total + 
+      "</div>"; for (var i = 0; i < 
+      summary.regions.length; i++) {
+        var row = summary.regions[i]; html += '<div 
+        class="summary-item"><span>' + row.region + 
+        '</span><span>' + row.count + ' total / ' + 
+        row.recent_24h + ' recent</span></div>';
+      }
+      summaryBox.innerHTML = html;
+    }
+    function stopPolling() { if (pollTimer) { 
+        clearTimeout(pollTimer); pollTimer = null;
+      }
+    }
+    function pollJob(jobId) { var xhr = new 
+      XMLHttpRequest(); xhr.open("GET", "/job/" + 
+      encodeURIComponent(jobId), true); 
+      xhr.onreadystatechange = function () {
+        if (xhr.readyState !== 4) { return;
+        }
+        rawBox.textContent = xhr.responseText; var data 
+        = null; try {
+          data = JSON.parse(xhr.responseText);
+        } catch (e) {
+          setStatus("Job status returned invalid 
+          JSON.", "error"); setBusy(false); 
+          stopPolling(); return;
+        }
+        jobInfoBox.textContent = "Job ID: " + 
+        data.job_id + " | Status: " + data.status; 
+        renderSummary(data.summary); 
+        renderDownloads(data.result); if (data.status 
+        === "queued" || data.status === "running") {
+          setStatus(data.message || ("Job is " + 
+          data.status + "...")); setBusy(true); 
+          pollTimer = setTimeout(function () {
+            pollJob(jobId);
+          }, 1500);
+          return;
+        }
+        if (data.status === "done") { 
+          setStatus(data.message || "Job finished.", 
+          "success"); setBusy(false); stopPolling(); 
+          return;
+        }
+        if (data.status === "error") { 
+          setStatus(data.message || "Job failed.", 
+          "error"); setBusy(false); stopPolling(); 
+          return;
+        }
+        setStatus("Unknown job status: " + data.status, 
+        "error"); setBusy(false); stopPolling();
+      };
+      xhr.onerror = function () { setStatus("Polling 
+        failed.", "error"); setBusy(false); 
+        stopPolling();
+      };
+      xhr.send();
+    }
+    function startGenerate() { var demoFile = 
+      document.getElementById("demo_file").value; var 
+      preset = document.getElementById("preset").value; 
+      var exportMode = 
+      document.getElementById("export_mode").value; var 
+      sourceMax = 
+      document.getElementById("source_max").value; if 
+      (!demoFile) {
+        setStatus("Please choose a demo dataset.", 
+        "error"); return;
+      }
+      stopPolling(); setBusy(true); 
+      setStatus("Submitting job..."); 
+      downloadsBox.textContent = "No downloads yet."; 
+      summaryBox.textContent = "No summary yet."; 
+      jobInfoBox.textContent = "Submitting..."; 
+      rawBox.textContent = "Sending /generate 
+      request..."; var formData = new FormData(); 
+      formData.append("demo_file", demoFile); 
+      formData.append("preset", preset); 
+      formData.append("export_mode", exportMode); 
+      formData.append("source_max", sourceMax); var xhr 
+      = new XMLHttpRequest(); xhr.open("POST", 
+      "/generate", true); xhr.onreadystatechange = 
+      function () {
+        if (xhr.readyState !== 4) { return;
+        }
+        rawBox.textContent = xhr.responseText; var data 
+        = null; try {
+          data = JSON.parse(xhr.responseText);
+        } catch (e) {
+          setStatus("Generate returned invalid JSON.", 
+          "error"); setBusy(false); return;
+        }
+        if (xhr.status < 200 || xhr.status >= 300) { 
+          setStatus(data.error || ("Generate failed 
+          with HTTP " + xhr.status), "error"); 
+          setBusy(false); return;
+        }
+        currentJobId = data.job_id; 
+        jobInfoBox.textContent = "Job ID: " + 
+        currentJobId + " | Status: " + data.status; 
+        setStatus(data.message || "Job started."); 
+        pollJob(currentJobId);
+      };
+      xhr.onerror = function () { setStatus("Generate 
+        request failed.", "error"); setBusy(false);
+      };
+      xhr.send(formData);
+    }
+    button.onclick = startGenerate; </script> </body>
+</html>

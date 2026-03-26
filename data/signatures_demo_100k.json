@@ -1,0 +1,19 @@
+[
+  {"id": "1", "region": "Europe", "timestamp": "2026-03-20T08:00:00Z"},
+  {"id": "2", "region": "Europe", "timestamp": "2026-03-20T08:01:00Z"},
+  {"id": "3", "region": "Europe", "timestamp": "2026-03-20T08:02:00Z"},
+  {"id": "4", "region": "Europe", "timestamp": "2026-03-20T08:03:00Z"},
+  {"id": "5", "region": "Africa", "timestamp": "2026-03-20T09:00:00Z"},
+  {"id": "6", "region": "Africa", "timestamp": "2026-03-20T09:01:00Z"},
+  {"id": "7", "region": "Asia-Pacific", "timestamp": "2026-03-20T09:10:00Z"},
+  {"id": "8", "region": "Asia-Pacific", "timestamp": "2026-03-20T09:11:00Z"},
+  {"id": "9", "region": "Asia-Pacific", "timestamp": "2026-03-20T09:12:00Z"},
+  {"id": "10", "region": "Asia-Pacific", "timestamp": "2026-03-20T09:13:00Z"},
+  {"id": "11", "region": "North America", "timestamp": "2026-03-20T09:30:00Z"},
+  {"id": "12", "region": "North America", "timestamp": "2026-03-20T09:31:00Z"},
+  {"id": "13", "region": "North America", "timestamp": "2026-03-20T09:32:00Z"},
+  {"id": "14", "region": "South America", "timestamp": "2026-03-20T09:40:00Z"},
+  {"id": "15", "region": "South America", "timestamp": "2026-03-20T09:41:00Z"},
+  {"id": "16", "region": "Oceania", "timestamp": "2026-03-20T09:50:00Z"},
+  {"id": "17", "region": "Oceania", "timestamp": "2026-03-20T09:51:00Z"}
+]
