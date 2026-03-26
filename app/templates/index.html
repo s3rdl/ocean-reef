@@ -163,14 +163,6 @@
       min-height: 120px;
     }
 
-    model-viewer {
-      width: 100%;
-      height: 560px;
-      border-radius: 16px;
-      border: 1px solid var(--border);
-      background: #eef4fb;
-    }
-
     .preview-meta {
       display: flex;
       justify-content: space-between;
@@ -181,14 +173,22 @@
       color: var(--muted);
     }
 
+    #preview-image {
+      width: 100%;
+      min-height: 560px;
+      border-radius: 16px;
+      border: 1px solid var(--border);
+      background: #eef4fb;
+      object-fit: contain;
+      display: block;
+    }
+
     @media (max-width: 1150px) {
       .layout {
         grid-template-columns: 1fr;
       }
     }
   </style>
-
-  <script type="module" src="https://ajax.googleapis.com/ajax/libs/model-viewer/3.5.0/model-viewer.min.js"></script>
 </head>
 <body>
   <div class="wrap">
@@ -242,22 +242,15 @@
       <section class="panel">
         <div class="preview-meta">
           <div>
-            <h2 style="margin-bottom:4px;">3D Preview</h2>
+            <h2 style="margin-bottom:4px;">Preview</h2>
             <div id="preview-status">No preview yet.</div>
           </div>
           <div class="hint">
-            Rotate: drag · Zoom: wheel / pinch
+            Server-rendered PNG preview
           </div>
         </div>
 
-        <model-viewer
-          id="glb-viewer"
-          camera-controls
-          touch-action="pan-y"
-          shadow-intensity="1"
-          exposure="1"
-          auto-rotate>
-        </model-viewer>
+        <img id="preview-image" alt="Generated preview">
       </section>
     </div>
   </div>
@@ -270,7 +263,7 @@
     var jobInfoBox = document.getElementById("job-info");
     var button = document.getElementById("generate-button");
     var previewStatus = document.getElementById("preview-status");
-    var glbViewer = document.getElementById("glb-viewer");
+    var previewImage = document.getElementById("preview-image");
 
     var currentJobId = null;
     var pollTimer = null;
@@ -300,12 +293,12 @@
     }
 
     function clearPreview() {
-      glbViewer.removeAttribute("src");
+      previewImage.removeAttribute("src");
     }
 
-    function updateGlbPreview(url) {
+    function updatePreview(url) {
       if (!url) {
-        setPreviewStatus("No GLB preview available.");
+        setPreviewStatus("No PNG preview available.");
         clearPreview();
         return;
       }
@@ -313,16 +306,16 @@
       var absoluteUrl = new URL(url, window.location.origin).toString();
       var cacheBustedUrl = absoluteUrl + (absoluteUrl.includes("?") ? "&" : "?") + "t=" + Date.now();
 
-      setPreviewStatus("Loading GLB preview...");
-      glbViewer.src = cacheBustedUrl;
+      setPreviewStatus("Loading PNG preview...");
+      previewImage.src = cacheBustedUrl;
     }
 
-    glbViewer.addEventListener("load", function () {
-      setPreviewStatus("GLB preview loaded.");
+    previewImage.addEventListener("load", function () {
+      setPreviewStatus("PNG preview loaded.");
     });
 
-    glbViewer.addEventListener("error", function () {
-      setPreviewStatus("Failed to load GLB preview.");
+    previewImage.addEventListener("error", function () {
+      setPreviewStatus("Failed to load PNG preview.");
     });
 
     function renderDownloads(result) {
@@ -344,21 +337,21 @@
         hasLinks = true;
       }
 
-      if (result.glb_url) {
-        var aGlb = document.createElement("a");
-        aGlb.href = result.glb_url;
-        aGlb.target = "_blank";
-        aGlb.textContent = "Download GLB";
-        downloadsBox.appendChild(aGlb);
-        hasLinks = true;
-      }
-
       if (result.scad_url) {
         var a2 = document.createElement("a");
         a2.href = result.scad_url;
         a2.target = "_blank";
         a2.textContent = "Download SCAD";
         downloadsBox.appendChild(a2);
+        hasLinks = true;
+      }
+
+      if (result.png_url) {
+        var aPng = document.createElement("a");
+        aPng.href = result.png_url;
+        aPng.target = "_blank";
+        aPng.textContent = "Download PNG";
+        downloadsBox.appendChild(aPng);
         hasLinks = true;
       }
 
@@ -375,12 +368,12 @@
         for (var i = 0; i < result.region_files.length; i++) {
           var rf = result.region_files[i];
 
-          if (rf.glb_url) {
-            var arGlb = document.createElement("a");
-            arGlb.href = rf.glb_url;
-            arGlb.target = "_blank";
-            arGlb.textContent = rf.region + " GLB";
-            downloadsBox.appendChild(arGlb);
+          if (rf.png_url) {
+            var arPng = document.createElement("a");
+            arPng.href = rf.png_url;
+            arPng.target = "_blank";
+            arPng.textContent = rf.region + " PNG";
+            downloadsBox.appendChild(arPng);
             hasLinks = true;
           }
 
@@ -427,12 +420,12 @@
     function choosePreviewUrl(result) {
       if (!result) return null;
 
-      if (result.glb_url) return result.glb_url;
+      if (result.png_url) return result.png_url;
 
       if (result.region_files && result.region_files.length > 0) {
         for (var i = 0; i < result.region_files.length; i++) {
-          if (result.region_files[i].glb_url) {
-            return result.region_files[i].glb_url;
+          if (result.region_files[i].png_url) {
+            return result.region_files[i].png_url;
           }
         }
       }
@@ -480,10 +473,10 @@
           stopPolling();
 
           var previewUrl = choosePreviewUrl(data.result);
-          updateGlbPreview(previewUrl);
+          updatePreview(previewUrl);
 
-          if (data.result && data.result.glb_conversion_warning && !previewUrl) {
-            setPreviewStatus(data.result.glb_conversion_warning);
+          if (data.result && data.result.png_warning && !previewUrl) {
+            setPreviewStatus(data.result.png_warning);
           }
           return;
         }
@@ -529,7 +522,7 @@
       summaryBox.textContent = "No summary yet.";
       jobInfoBox.textContent = "Submitting...";
       rawBox.textContent = "Sending /generate request...";
-      setPreviewStatus("Waiting for finished GLB...");
+      setPreviewStatus("Waiting for finished PNG...");
       clearPreview();
 
       var formData = new FormData();

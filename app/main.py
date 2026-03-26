@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import math
+import mimetypes
 import shutil
 import subprocess
 import tempfile
@@ -18,6 +19,7 @@ from fastapi import FastAPI, File, Form, Request, UploadFile
 from fastapi.responses import HTMLResponse, JSONResponse, Response, FileResponse
 from fastapi.staticfiles import StaticFiles
 from fastapi.templating import Jinja2Templates
+
 
 BASE_DIR = Path(__file__).resolve().parent.parent
 APP_DIR = BASE_DIR / "app"
@@ -36,7 +38,6 @@ app = FastAPI(title="Ocean Prototype UI")
 templates = Jinja2Templates(directory=str(APP_DIR / "templates"))
 
 app.mount("/static", StaticFiles(directory=str(APP_DIR / "static")), name="static")
-app.mount("/output", StaticFiles(directory=str(OUTPUT_DIR)), name="output")
 app.mount("/generated", StaticFiles(directory=str(GENERATED_DIR)), name="generated")
 
 
@@ -331,28 +332,27 @@ def run_openscad(scad_path: Path, stl_path: Path) -> tuple[bool, str]:
 
     return True, ""
 
-def convert_stl_to_glb(stl_path: Path, glb_path: Path) -> tuple[bool, str]:
+
+def render_png_from_scad(scad_path: Path, png_path: Path) -> tuple[bool, str]:
+    cmd = [
+        "openscad",
+        "--render",
+        "--imgsize=1600,1200",
+        "--colorscheme=Tomorrow",
+        "-o",
+        str(png_path),
+        str(scad_path),
+    ]
     try:
-        import trimesh
+        completed = subprocess.run(cmd, capture_output=True, text=True, check=False)
+    except FileNotFoundError:
+        return False, "OpenSCAD not found in PATH."
 
-        mesh = trimesh.load(str(stl_path), force="mesh", process=False)
+    if completed.returncode != 0:
+        return False, (completed.stderr or completed.stdout or "PNG render failed").strip()
 
-        if mesh is None or mesh.vertices is None or len(mesh.vertices) == 0:
-            return False, "Empty mesh"
+    return True, ""
 
-        # Clean mesh using current trimesh-supported workflow
-        mesh.process(validate=True)
-
-        if mesh.vertices is None or len(mesh.vertices) == 0:
-            return False, "Mesh became empty after processing"
-
-        mesh.export(glb_path, file_type="glb")
-        return True, ""
-
-    except ImportError:
-        return False, "GLB conversion requires trimesh and pygltflib"
-    except Exception as exc:
-        return False, f"GLB conversion failed: {exc}"
 
 def build_summary(agg: dict[str, Any]) -> dict[str, Any]:
     rows = []
@@ -422,11 +422,11 @@ def process_job(job_id: str, request_data: dict[str, Any]) -> None:
         title = f"Ocean Reef Prototype - {demo_file}"
         main_scad_name = f"reef_{job_id}.scad"
         main_stl_name = f"reef_{job_id}.stl"
-        main_glb_name = f"reef_{job_id}.glb"
+        main_png_name = f"reef_{job_id}.png"
 
         main_scad_path = GENERATED_DIR / main_scad_name
         main_stl_path = OUTPUT_DIR / main_stl_name
-        main_glb_path = OUTPUT_DIR / main_glb_name
+        main_png_path = OUTPUT_DIR / main_png_name
 
         main_scad_path.write_text(
             render_scad(SCAD_TEMPLATE, model_data, title=title, region_filter=""),
@@ -441,7 +441,7 @@ def process_job(job_id: str, request_data: dict[str, Any]) -> None:
             "export_mode": export_mode,
             "scad_url": f"/generated/{main_scad_name}",
             "stl_url": None,
-            "glb_url": None,
+            "png_url": None,
             "zip_url": None,
             "region_files": [],
             "params": {
@@ -454,6 +454,13 @@ def process_job(job_id: str, request_data: dict[str, Any]) -> None:
         }
 
         if export_mode == "scad_only":
+            update_job(job_id, message="Rendering PNG preview...")
+            ok, message = render_png_from_scad(main_scad_path, main_png_path)
+            if ok:
+                result["png_url"] = f"/output/{main_png_name}"
+            else:
+                result["png_warning"] = message
+
             update_job(job_id, status="done", message="SCAD generated.", result=result, summary=summary)
             return
 
@@ -466,12 +473,12 @@ def process_job(job_id: str, request_data: dict[str, Any]) -> None:
 
             result["stl_url"] = f"/output/{main_stl_name}"
 
-            update_job(job_id, message="Converting STL to GLB...")
-            ok, message = convert_stl_to_glb(main_stl_path, main_glb_path)
+            update_job(job_id, message="Rendering PNG preview...")
+            ok, message = render_png_from_scad(main_scad_path, main_png_path)
             if ok:
-                result["glb_url"] = f"/output/{main_glb_name}"
+                result["png_url"] = f"/output/{main_png_name}"
             else:
-                result["glb_conversion_warning"] = message
+                result["png_warning"] = message
 
             update_job(job_id, status="done", message="STL generated.", result=result, summary=summary)
             return
@@ -506,11 +513,11 @@ def process_job(job_id: str, request_data: dict[str, Any]) -> None:
                     region_slug = branch["region"].lower().replace(" ", "_").replace("-", "_")
                     region_scad_name = f"reef_{job_id}_{region_slug}.scad"
                     region_stl_name = f"reef_{job_id}_{region_slug}.stl"
-                    region_glb_name = f"reef_{job_id}_{region_slug}.glb"
+                    region_png_name = f"reef_{job_id}_{region_slug}.png"
 
                     region_scad_path = GENERATED_DIR / region_scad_name
                     region_stl_path = OUTPUT_DIR / region_stl_name
-                    region_glb_path = OUTPUT_DIR / region_glb_name
+                    region_png_path = OUTPUT_DIR / region_png_name
 
                     region_scad_path.write_text(
                         render_scad(
@@ -527,21 +534,21 @@ def process_job(job_id: str, request_data: dict[str, Any]) -> None:
                         update_job(job_id, status="error", message=f"{branch['region']}: {message}", result=result, summary=summary)
                         return
 
-                    region_glb_url = None
-                    ok, glb_message = convert_stl_to_glb(region_stl_path, region_glb_path)
+                    region_png_url = None
+                    ok, png_message = render_png_from_scad(region_scad_path, region_png_path)
                     if ok:
-                        region_glb_url = f"/output/{region_glb_name}"
+                        region_png_url = f"/output/{region_png_name}"
 
                     shutil.copy2(region_scad_path, temp_dir / region_scad_name)
                     shutil.copy2(region_stl_path, temp_dir / region_stl_name)
-                    if ok and region_glb_path.exists():
-                        shutil.copy2(region_glb_path, temp_dir / region_glb_name)
+                    if region_png_url and region_png_path.exists():
+                        shutil.copy2(region_png_path, temp_dir / region_png_name)
 
                     region_files.append({
                         "region": branch["region"],
                         "scad_url": f"/generated/{region_scad_name}",
                         "stl_url": f"/output/{region_stl_name}",
-                        "glb_url": region_glb_url,
+                        "png_url": region_png_url,
                     })
 
                 update_job(job_id, message="Packaging ZIP...")
@@ -554,9 +561,9 @@ def process_job(job_id: str, request_data: dict[str, Any]) -> None:
                 result["zip_url"] = f"/output/{zip_name}"
 
                 if region_files:
-                    first_glb = next((r["glb_url"] for r in region_files if r.get("glb_url")), None)
-                    if first_glb:
-                        result["glb_url"] = first_glb
+                    first_png = next((r["png_url"] for r in region_files if r.get("png_url")), None)
+                    if first_png:
+                        result["png_url"] = first_png
 
                 update_job(job_id, status="done", message="ZIP bundle generated.", result=result, summary=summary)
                 return
@@ -669,4 +676,26 @@ async def get_job(job_id: str) -> JSONResponse:
 @app.get("/output/{filename}")
 async def serve_output(filename: str):
     path = OUTPUT_DIR / filename
-    return FileResponse(path, media_type="model/gltf-binary")
+
+    if not path.exists() or not path.is_file():
+        return JSONResponse({"error": "File not found."}, status_code=404)
+
+    suffix = path.suffix.lower()
+
+    if suffix == ".png":
+        media_type = "image/png"
+    elif suffix == ".jpg" or suffix == ".jpeg":
+        media_type = "image/jpeg"
+    elif suffix == ".stl":
+        media_type = "model/stl"
+    elif suffix == ".glb":
+        media_type = "model/gltf-binary"
+    elif suffix == ".zip":
+        media_type = "application/zip"
+    elif suffix == ".scad":
+        media_type = "text/plain; charset=utf-8"
+    else:
+        guessed_type, _ = mimetypes.guess_type(str(path))
+        media_type = guessed_type or "application/octet-stream"
+
+    return FileResponse(path, media_type=media_type)
