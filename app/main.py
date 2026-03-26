@@ -335,20 +335,24 @@ def convert_stl_to_glb(stl_path: Path, glb_path: Path) -> tuple[bool, str]:
     try:
         import trimesh
 
-        mesh = trimesh.load(str(stl_path), force='mesh')
+        mesh = trimesh.load(str(stl_path), force="mesh", process=False)
 
-        if mesh is None or mesh.vertices.shape[0] == 0:
+        if mesh is None or mesh.vertices is None or len(mesh.vertices) == 0:
             return False, "Empty mesh"
 
-        # Normalize (important for viewer!)
-        mesh.remove_unreferenced_vertices()
-        mesh.remove_degenerate_faces()
+        # Clean mesh using current trimesh-supported workflow
+        mesh.process(validate=True)
 
-        mesh.export(glb_path, file_type='glb')
+        if mesh.vertices is None or len(mesh.vertices) == 0:
+            return False, "Mesh became empty after processing"
 
+        mesh.export(glb_path, file_type="glb")
         return True, ""
-    except Exception as e:
-        return False, f"GLB conversion failed: {e}"
+
+    except ImportError:
+        return False, "GLB conversion requires trimesh and pygltflib"
+    except Exception as exc:
+        return False, f"GLB conversion failed: {exc}"
 
 def build_summary(agg: dict[str, Any]) -> dict[str, Any]:
     rows = []
