@@ -332,9 +332,12 @@ def run_openscad(scad_path: Path, stl_path: Path) -> tuple[bool, str]:
 
     return True, ""
 
-
 def render_png_from_scad(scad_path: Path, png_path: Path) -> tuple[bool, str]:
     cmd = [
+        "xvfb-run",
+        "-a",
+        "-s",
+        "-screen 0 1600x1200x24",
         "openscad",
         "--render",
         "--imgsize=1600,1200",
@@ -345,14 +348,19 @@ def render_png_from_scad(scad_path: Path, png_path: Path) -> tuple[bool, str]:
     ]
     try:
         completed = subprocess.run(cmd, capture_output=True, text=True, check=False)
-    except FileNotFoundError:
+    except FileNotFoundError as exc:
+        missing = str(exc)
+        if "xvfb-run" in missing:
+            return False, "xvfb-run not found. Install it with: sudo apt-get install -y xvfb"
         return False, "OpenSCAD not found in PATH."
 
     if completed.returncode != 0:
         return False, (completed.stderr or completed.stdout or "PNG render failed").strip()
 
-    return True, ""
+    if not png_path.exists() or png_path.stat().st_size == 0:
+        return False, "PNG render produced no usable file."
 
+    return True, ""
 
 def build_summary(agg: dict[str, Any]) -> dict[str, Any]:
     rows = []
@@ -684,7 +692,7 @@ async def serve_output(filename: str):
 
     if suffix == ".png":
         media_type = "image/png"
-    elif suffix == ".jpg" or suffix == ".jpeg":
+    elif suffix in (".jpg", ".jpeg"):
         media_type = "image/jpeg"
     elif suffix == ".stl":
         media_type = "model/stl"

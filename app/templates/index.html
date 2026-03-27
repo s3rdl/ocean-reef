@@ -62,7 +62,9 @@
       margin: 14px 0 6px;
     }
 
-    select, input[type="number"], button {
+    select,
+    input[type="number"],
+    button {
       width: 100%;
       font: inherit;
       padding: 10px 12px;
@@ -183,6 +185,10 @@
       display: block;
     }
 
+    .region-picker {
+      margin-top: 14px;
+    }
+
     @media (max-width: 1150px) {
       .layout {
         grid-template-columns: 1fr;
@@ -235,7 +241,7 @@
         <h3 style="margin-top:20px;">Summary</h3>
         <div id="summary-box" class="hint">No summary yet.</div>
 
-        <h3 style="margin-top:20px;">Raw Response</h3>
+        <h3 style="margin-top:20px;">System Status</h3>
         <pre id="raw-response">Script loaded.</pre>
       </section>
 
@@ -251,6 +257,11 @@
         </div>
 
         <img id="preview-image" alt="Generated preview">
+
+        <div class="region-picker" id="region-picker-wrap" style="display:none;">
+          <label for="region-preview-select">Region preview</label>
+          <select id="region-preview-select"></select>
+        </div>
       </section>
     </div>
   </div>
@@ -264,9 +275,12 @@
     var button = document.getElementById("generate-button");
     var previewStatus = document.getElementById("preview-status");
     var previewImage = document.getElementById("preview-image");
+    var regionPreviewWrap = document.getElementById("region-picker-wrap");
+    var regionPreviewSelect = document.getElementById("region-preview-select");
 
     var currentJobId = null;
     var pollTimer = null;
+    var latestRegionFiles = [];
 
     function setStatus(text, kind) {
       statusBox.className = "status";
@@ -410,6 +424,51 @@
       summaryBox.innerHTML = html;
     }
 
+    function renderRegionPreviewPicker(result) {
+      latestRegionFiles = [];
+      regionPreviewSelect.innerHTML = "";
+      regionPreviewWrap.style.display = "none";
+
+      if (!result || !result.region_files || result.region_files.length === 0) {
+        return;
+      }
+
+      var pngRegions = [];
+      for (var i = 0; i < result.region_files.length; i++) {
+        if (result.region_files[i].png_url) {
+          pngRegions.push(result.region_files[i]);
+        }
+      }
+
+      if (pngRegions.length === 0) {
+        return;
+      }
+
+      latestRegionFiles = pngRegions;
+
+      var defaultOption = document.createElement("option");
+      defaultOption.value = "";
+      defaultOption.textContent = "-- select region preview --";
+      regionPreviewSelect.appendChild(defaultOption);
+
+      for (var j = 0; j < pngRegions.length; j++) {
+        var option = document.createElement("option");
+        option.value = pngRegions[j].png_url;
+        option.textContent = pngRegions[j].region;
+        regionPreviewSelect.appendChild(option);
+      }
+
+      regionPreviewWrap.style.display = "block";
+    }
+
+    regionPreviewSelect.addEventListener("change", function () {
+      var url = regionPreviewSelect.value;
+      if (!url) {
+        return;
+      }
+      updatePreview(url);
+    });
+
     function stopPolling() {
       if (pollTimer) {
         clearTimeout(pollTimer);
@@ -431,6 +490,20 @@
       }
 
       return null;
+    }
+
+    let pollCount = 0;
+
+    function getPollInterval(status) {
+      pollCount++;
+
+      if (status === "queued") return 2000;
+
+      if (status === "running") {
+        return Math.min(4000, 1500 + pollCount * 300);
+      }
+
+      return 0;
     }
 
     function pollJob(jobId) {
@@ -461,9 +534,12 @@
         if (data.status === "queued" || data.status === "running") {
           setStatus(data.message || ("Job is " + data.status + "..."));
           setBusy(true);
+          const interval = getPollInterval(data.status);
+
           pollTimer = setTimeout(function () {
             pollJob(jobId);
-          }, 1500);
+          }, interval);
+          
           return;
         }
 
@@ -474,6 +550,7 @@
 
           var previewUrl = choosePreviewUrl(data.result);
           updatePreview(previewUrl);
+          renderRegionPreviewPicker(data.result);
 
           if (data.result && data.result.png_warning && !previewUrl) {
             setPreviewStatus(data.result.png_warning);
@@ -487,6 +564,7 @@
           stopPolling();
           setPreviewStatus("Preview unavailable because the job failed.");
           clearPreview();
+          regionPreviewWrap.style.display = "none";
           return;
         }
 
@@ -524,6 +602,8 @@
       rawBox.textContent = "Sending /generate request...";
       setPreviewStatus("Waiting for finished PNG...");
       clearPreview();
+      regionPreviewWrap.style.display = "none";
+      regionPreviewSelect.innerHTML = "";
 
       var formData = new FormData();
       formData.append("demo_file", demoFile);
@@ -539,7 +619,7 @@
           return;
         }
 
-        rawBox.textContent = xhr.responseText;
+        rawBox.textContent = formatRaw(data);
 
         var data = null;
         try {
@@ -570,6 +650,36 @@
       xhr.send(formData);
     }
 
+    function formatRaw(data) {
+  if (!data) return "No data.";
+
+  let out = "";
+
+  out += "status: " + data.status + "\n";
+
+  if (data.message) {
+    out += "message: " + data.message + "\n";
+  }
+
+  if (data.error) {
+    out += "error: " + data.error + "\n";
+  }
+
+  if (data.summary && data.summary.total !== undefined) {
+    out += "\nsummary:\n";
+    out += "  total: " + data.summary.total + "\n";
+  }
+
+  if (data.result) {
+    out += "\nresult:\n";
+
+    if (data.result.stl_url) out += "  STL: yes\n";
+    if (data.result.png_url) out += "  PNG preview: yes\n";
+    if (data.result.zip_url) out += "  ZIP: yes\n";
+  }
+
+  return out;
+}
     button.onclick = startGenerate;
   </script>
 </body>
