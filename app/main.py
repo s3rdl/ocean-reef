@@ -332,6 +332,7 @@ def run_openscad(scad_path: Path, stl_path: Path) -> tuple[bool, str]:
 
     return True, ""
 
+
 def render_png_from_scad(scad_path: Path, png_path: Path) -> tuple[bool, str]:
     cmd = [
         "xvfb-run",
@@ -361,6 +362,7 @@ def render_png_from_scad(scad_path: Path, png_path: Path) -> tuple[bool, str]:
         return False, "PNG render produced no usable file."
 
     return True, ""
+
 
 def build_summary(agg: dict[str, Any]) -> dict[str, Any]:
     rows = []
@@ -397,7 +399,14 @@ def get_job_record(job_id: str) -> dict[str, Any] | None:
 
 def process_job(job_id: str, request_data: dict[str, Any]) -> None:
     try:
-        update_job(job_id, status="running", message="Loading dataset...")
+        update_job(
+            job_id,
+            status="running",
+            message="Loading dataset...",
+            progress=10,
+            stage="loading_dataset",
+            eta_seconds=20,
+        )
 
         demo_file = request_data["demo_file"]
         export_mode = request_data["export_mode"]
@@ -409,14 +418,27 @@ def process_job(job_id: str, request_data: dict[str, Any]) -> None:
 
         dataset_path = DATA_DIR / demo_file
         if not dataset_path.exists():
-            update_job(job_id, status="error", message=f"Dataset not found: {demo_file}")
+            update_job(
+                job_id,
+                status="error",
+                message=f"Dataset not found: {demo_file}",
+                stage="error",
+                eta_seconds=None,
+            )
             return
 
         signatures = load_signatures(dataset_path)
         agg = aggregate_signatures(signatures)
         summary = build_summary(agg)
 
-        update_job(job_id, message="Building model parameters...", summary=summary)
+        update_job(
+            job_id,
+            message="Building model parameters...",
+            summary=summary,
+            progress=20,
+            stage="building_model",
+            eta_seconds=18,
+        )
 
         model_data = build_branch_data(
             agg=agg,
@@ -462,37 +484,91 @@ def process_job(job_id: str, request_data: dict[str, Any]) -> None:
         }
 
         if export_mode == "scad_only":
-            update_job(job_id, message="Rendering PNG preview...")
+            update_job(
+                job_id,
+                message="Rendering PNG preview...",
+                progress=75,
+                stage="rendering_png",
+                eta_seconds=8,
+            )
+
             ok, message = render_png_from_scad(main_scad_path, main_png_path)
             if ok:
                 result["png_url"] = f"/output/{main_png_name}"
             else:
                 result["png_warning"] = message
 
-            update_job(job_id, status="done", message="SCAD generated.", result=result, summary=summary)
+            update_job(
+                job_id,
+                status="done",
+                message="SCAD generated.",
+                result=result,
+                summary=summary,
+                progress=100,
+                stage="done",
+                eta_seconds=0,
+            )
             return
 
         if export_mode == "single_stl":
-            update_job(job_id, message="Rendering STL with OpenSCAD...")
+            update_job(
+                job_id,
+                message="Rendering STL with OpenSCAD...",
+                progress=45,
+                stage="rendering_stl",
+                eta_seconds=40,
+            )
+
             ok, message = run_openscad(main_scad_path, main_stl_path)
             if not ok:
-                update_job(job_id, status="error", message=message, result=result, summary=summary)
+                update_job(
+                    job_id,
+                    status="error",
+                    message=message,
+                    result=result,
+                    summary=summary,
+                    stage="error",
+                    eta_seconds=None,
+                )
                 return
 
             result["stl_url"] = f"/output/{main_stl_name}"
 
-            update_job(job_id, message="Rendering PNG preview...")
+            update_job(
+                job_id,
+                message="Rendering PNG preview...",
+                progress=82,
+                stage="rendering_png",
+                eta_seconds=12,
+            )
+
             ok, message = render_png_from_scad(main_scad_path, main_png_path)
             if ok:
                 result["png_url"] = f"/output/{main_png_name}"
             else:
                 result["png_warning"] = message
 
-            update_job(job_id, status="done", message="STL generated.", result=result, summary=summary)
+            update_job(
+                job_id,
+                status="done",
+                message="STL generated.",
+                result=result,
+                summary=summary,
+                progress=100,
+                stage="done",
+                eta_seconds=0,
+            )
             return
 
         if export_mode == "separate_regions_zip":
-            update_job(job_id, message="Rendering separate region files...")
+            update_job(
+                job_id,
+                message="Rendering separate region files...",
+                progress=35,
+                stage="rendering_regions",
+                eta_seconds=90,
+            )
+
             region_files: list[dict[str, str | None]] = []
             zip_name = f"reef_bundle_{job_id}.zip"
             zip_path = OUTPUT_DIR / zip_name
@@ -516,7 +592,16 @@ def process_job(job_id: str, request_data: dict[str, Any]) -> None:
                 total_regions = len(active_branches)
 
                 for idx, branch in enumerate(active_branches, start=1):
-                    update_job(job_id, message=f"Rendering region {idx}/{total_regions}: {branch['region']}...")
+                    region_progress = 35 + int((idx / max(total_regions, 1)) * 55)
+                    remaining_regions = max(total_regions - idx, 0)
+
+                    update_job(
+                        job_id,
+                        message=f"Rendering region {idx}/{total_regions}: {branch['region']}...",
+                        progress=region_progress,
+                        stage="rendering_regions",
+                        eta_seconds=max(remaining_regions * 12, 8),
+                    )
 
                     region_slug = branch["region"].lower().replace(" ", "_").replace("-", "_")
                     region_scad_name = f"reef_{job_id}_{region_slug}.scad"
@@ -539,7 +624,15 @@ def process_job(job_id: str, request_data: dict[str, Any]) -> None:
 
                     ok, message = run_openscad(region_scad_path, region_stl_path)
                     if not ok:
-                        update_job(job_id, status="error", message=f"{branch['region']}: {message}", result=result, summary=summary)
+                        update_job(
+                            job_id,
+                            status="error",
+                            message=f"{branch['region']}: {message}",
+                            result=result,
+                            summary=summary,
+                            stage="error",
+                            eta_seconds=None,
+                        )
                         return
 
                     region_png_url = None
@@ -559,7 +652,13 @@ def process_job(job_id: str, request_data: dict[str, Any]) -> None:
                         "png_url": region_png_url,
                     })
 
-                update_job(job_id, message="Packaging ZIP...")
+                update_job(
+                    job_id,
+                    message="Packaging ZIP...",
+                    progress=95,
+                    stage="packaging_zip",
+                    eta_seconds=5,
+                )
 
                 with zipfile.ZipFile(zip_path, "w", compression=zipfile.ZIP_DEFLATED) as zf:
                     for file_path in temp_dir.glob("*"):
@@ -573,12 +672,27 @@ def process_job(job_id: str, request_data: dict[str, Any]) -> None:
                     if first_png:
                         result["png_url"] = first_png
 
-                update_job(job_id, status="done", message="ZIP bundle generated.", result=result, summary=summary)
+                update_job(
+                    job_id,
+                    status="done",
+                    message="ZIP bundle generated.",
+                    result=result,
+                    summary=summary,
+                    progress=100,
+                    stage="done",
+                    eta_seconds=0,
+                )
                 return
             finally:
                 shutil.rmtree(temp_dir, ignore_errors=True)
 
-        update_job(job_id, status="error", message=f"Unknown export mode: {export_mode}")
+        update_job(
+            job_id,
+            status="error",
+            message=f"Unknown export mode: {export_mode}",
+            stage="error",
+            eta_seconds=None,
+        )
 
     except Exception as exc:
         traceback.print_exc()
@@ -587,6 +701,8 @@ def process_job(job_id: str, request_data: dict[str, Any]) -> None:
             status="error",
             message=f"Unhandled server error: {exc}",
             error_type=type(exc).__name__,
+            stage="error",
+            eta_seconds=None,
         )
 
 
@@ -644,6 +760,9 @@ async def generate(
             "job_id": job_id,
             "status": "queued",
             "message": "Job queued.",
+            "progress": 5,
+            "stage": "queued",
+            "eta_seconds": None,
             "result": None,
             "summary": None,
             "created_at": datetime.now(timezone.utc).isoformat(),

@@ -189,6 +189,24 @@
       margin-top: 14px;
     }
 
+    .progress-track {
+      width: 100%;
+      height: 12px;
+      background: #e5edf5;
+      border-radius: 999px;
+      overflow: hidden;
+      margin-top: 8px;
+      margin-bottom: 8px;
+      border: 1px solid #dbe3ef;
+    }
+
+    .progress-bar {
+      width: 0%;
+      height: 100%;
+      background: linear-gradient(90deg, #2563eb, #16a34a);
+      transition: width 0.35s ease;
+    }
+
     @media (max-width: 1150px) {
       .layout {
         grid-template-columns: 1fr;
@@ -232,6 +250,14 @@
         <h3 style="margin-top:20px;">Status</h3>
         <div id="status-box" class="status">Ready.</div>
 
+        <div style="margin-top:12px;">
+          <div class="hint" id="progress-label">No active job.</div>
+          <div class="progress-track">
+            <div id="progress-bar" class="progress-bar"></div>
+          </div>
+          <div class="hint" id="eta-label">Estimated time remaining: —</div>
+        </div>
+
         <h3 style="margin-top:20px;">Job Info</h3>
         <div id="job-info" class="hint">No job yet.</div>
 
@@ -241,7 +267,7 @@
         <h3 style="margin-top:20px;">Summary</h3>
         <div id="summary-box" class="hint">No summary yet.</div>
 
-        <h3 style="margin-top:20px;">System Status</h3>
+        <h3 style="margin-top:20px;">Processing Details</h3>
         <pre id="raw-response">Script loaded.</pre>
       </section>
 
@@ -277,6 +303,9 @@
     var previewImage = document.getElementById("preview-image");
     var regionPreviewWrap = document.getElementById("region-picker-wrap");
     var regionPreviewSelect = document.getElementById("region-preview-select");
+    var progressBar = document.getElementById("progress-bar");
+    var progressLabel = document.getElementById("progress-label");
+    var etaLabel = document.getElementById("eta-label");
 
     var currentJobId = null;
     var pollTimer = null;
@@ -331,6 +360,85 @@
     previewImage.addEventListener("error", function () {
       setPreviewStatus("Failed to load PNG preview.");
     });
+
+    function formatEta(seconds) {
+      if (seconds === null || seconds === undefined) return "—";
+      if (seconds <= 0) return "less than 1 second";
+
+      var mins = Math.floor(seconds / 60);
+      var secs = seconds % 60;
+
+      if (mins > 0) {
+        return mins + " min " + secs + " sec";
+      }
+      return secs + " sec";
+    }
+
+    function updateProgress(data) {
+      var progress = 0;
+      var stage = "idle";
+      var eta = null;
+
+      if (data) {
+        if (typeof data.progress === "number") {
+          progress = data.progress;
+        }
+        if (data.stage) {
+          stage = data.stage;
+        }
+        if (data.eta_seconds !== undefined) {
+          eta = data.eta_seconds;
+        }
+      }
+
+      progressBar.style.width = progress + "%";
+      progressLabel.textContent = "Progress: " + progress + "% (" + stage + ")";
+      etaLabel.textContent = "Estimated time remaining: " + formatEta(eta);
+    }
+
+    function resetProgress() {
+      progressBar.style.width = "0%";
+      progressLabel.textContent = "No active job.";
+      etaLabel.textContent = "Estimated time remaining: —";
+    }
+
+    function formatRaw(data) {
+      if (!data) return "No data.";
+
+      var out = "";
+
+      out += "status: " + (data.status || "unknown") + "\n";
+
+      if (data.stage) {
+        out += "stage: " + data.stage + "\n";
+      }
+
+      if (typeof data.progress === "number") {
+        out += "progress: " + data.progress + "%\n";
+      }
+
+      if (data.message) {
+        out += "message: " + data.message + "\n";
+      }
+
+      if (data.error) {
+        out += "error: " + data.error + "\n";
+      }
+
+      if (data.summary && data.summary.total !== undefined) {
+        out += "\nsummary:\n";
+        out += "  total: " + data.summary.total + "\n";
+      }
+
+      if (data.result) {
+        out += "\nresult:\n";
+        if (data.result.stl_url) out += "  STL: yes\n";
+        if (data.result.png_url) out += "  PNG preview: yes\n";
+        if (data.result.zip_url) out += "  ZIP: yes\n";
+      }
+
+      return out;
+    }
 
     function renderDownloads(result) {
       downloadsBox.innerHTML = "";
@@ -492,20 +600,6 @@
       return null;
     }
 
-    let pollCount = 0;
-
-    function getPollInterval(status) {
-      pollCount++;
-
-      if (status === "queued") return 2000;
-
-      if (status === "running") {
-        return Math.min(4000, 1500 + pollCount * 300);
-      }
-
-      return 0;
-    }
-
     function pollJob(jobId) {
       var xhr = new XMLHttpRequest();
       xhr.open("GET", "/job/" + encodeURIComponent(jobId), true);
@@ -514,8 +608,6 @@
         if (xhr.readyState !== 4) {
           return;
         }
-
-        rawBox.textContent = xhr.responseText;
 
         var data = null;
         try {
@@ -527,6 +619,9 @@
           return;
         }
 
+        rawBox.textContent = formatRaw(data);
+        updateProgress(data);
+
         jobInfoBox.textContent = "Job ID: " + data.job_id + " | Status: " + data.status;
         renderSummary(data.summary);
         renderDownloads(data.result);
@@ -534,18 +629,19 @@
         if (data.status === "queued" || data.status === "running") {
           setStatus(data.message || ("Job is " + data.status + "..."));
           setBusy(true);
-          const interval = getPollInterval(data.status);
+
+          var interval = data.status === "queued" ? 2000 : 2500;
 
           pollTimer = setTimeout(function () {
             pollJob(jobId);
           }, interval);
-          
           return;
         }
 
         if (data.status === "done") {
           setStatus(data.message || "Job finished.", "success");
           setBusy(false);
+          updateProgress(data);
           stopPolling();
 
           var previewUrl = choosePreviewUrl(data.result);
@@ -561,6 +657,7 @@
         if (data.status === "error") {
           setStatus(data.message || "Job failed.", "error");
           setBusy(false);
+          updateProgress(data);
           stopPolling();
           setPreviewStatus("Preview unavailable because the job failed.");
           clearPreview();
@@ -599,11 +696,16 @@
       downloadsBox.textContent = "No downloads yet.";
       summaryBox.textContent = "No summary yet.";
       jobInfoBox.textContent = "Submitting...";
-      rawBox.textContent = "Sending /generate request...";
+      rawBox.textContent = "Submitting job...";
       setPreviewStatus("Waiting for finished PNG...");
       clearPreview();
       regionPreviewWrap.style.display = "none";
       regionPreviewSelect.innerHTML = "";
+
+      resetProgress();
+      progressBar.style.width = "5%";
+      progressLabel.textContent = "Progress: 5% (queued)";
+      etaLabel.textContent = "Estimated time remaining: calculating...";
 
       var formData = new FormData();
       formData.append("demo_file", demoFile);
@@ -619,8 +721,6 @@
           return;
         }
 
-        rawBox.textContent = formatRaw(data);
-
         var data = null;
         try {
           data = JSON.parse(xhr.responseText);
@@ -629,6 +729,8 @@
           setBusy(false);
           return;
         }
+
+        rawBox.textContent = formatRaw(data);
 
         if (xhr.status < 200 || xhr.status >= 300) {
           setStatus(data.error || ("Generate failed with HTTP " + xhr.status), "error");
@@ -650,36 +752,6 @@
       xhr.send(formData);
     }
 
-    function formatRaw(data) {
-  if (!data) return "No data.";
-
-  let out = "";
-
-  out += "status: " + data.status + "\n";
-
-  if (data.message) {
-    out += "message: " + data.message + "\n";
-  }
-
-  if (data.error) {
-    out += "error: " + data.error + "\n";
-  }
-
-  if (data.summary && data.summary.total !== undefined) {
-    out += "\nsummary:\n";
-    out += "  total: " + data.summary.total + "\n";
-  }
-
-  if (data.result) {
-    out += "\nresult:\n";
-
-    if (data.result.stl_url) out += "  STL: yes\n";
-    if (data.result.png_url) out += "  PNG preview: yes\n";
-    if (data.result.zip_url) out += "  ZIP: yes\n";
-  }
-
-  return out;
-}
     button.onclick = startGenerate;
   </script>
 </body>
