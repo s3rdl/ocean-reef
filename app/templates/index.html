@@ -19,6 +19,8 @@
       --error-bg: #fee2e2;
       --busy: #16a34a;
       --busy-glow: rgba(22, 163, 74, 0.35);
+      --warn: #92400e;
+      --warn-bg: #fef3c7;
     }
 
     * { box-sizing: border-box; }
@@ -128,6 +130,11 @@
     .status.error {
       background: var(--error-bg);
       color: var(--error);
+    }
+
+    .status.warn {
+      background: var(--warn-bg);
+      color: var(--warn);
     }
 
     .hint {
@@ -316,6 +323,8 @@
 
     var currentJobId = null;
     var pollTimer = null;
+    var pollErrorCount = 0;
+    var maxPollErrors = 5;
 
     function setStatus(text, kind) {
       statusBox.className = "status";
@@ -601,12 +610,54 @@
       return null;
     }
 
+    function schedulePollRetry(jobId, delayMs, userMessage) {
+      if (userMessage) {
+        setStatus(userMessage, "warn");
+      }
+      setBusy(true);
+      stopPolling();
+      pollTimer = setTimeout(function () {
+        pollJob(jobId);
+      }, delayMs);
+    }
+
     function pollJob(jobId) {
       var xhr = new XMLHttpRequest();
       xhr.open("GET", "/job/" + encodeURIComponent(jobId), true);
+      xhr.timeout = 12000;
 
       xhr.onreadystatechange = function () {
         if (xhr.readyState !== 4) {
+          return;
+        }
+
+        if (xhr.status === 0) {
+          return;
+        }
+
+        if (xhr.status >= 500) {
+          pollErrorCount += 1;
+
+          if (pollErrorCount < maxPollErrors) {
+            schedulePollRetry(jobId, 3000, "Temporary server hiccup. Retrying...");
+          } else {
+            setStatus("Polling failed after multiple retries.", "error");
+            setBusy(false);
+            stopPolling();
+          }
+          return;
+        }
+
+        if (xhr.status === 404) {
+          pollErrorCount += 1;
+
+          if (pollErrorCount < maxPollErrors) {
+            schedulePollRetry(jobId, 3000, "Job status not available yet. Retrying...");
+          } else {
+            setStatus("Job could not be found after multiple retries.", "error");
+            setBusy(false);
+            stopPolling();
+          }
           return;
         }
 
@@ -614,11 +665,19 @@
         try {
           data = JSON.parse(xhr.responseText);
         } catch (e) {
-          setStatus("Job status returned invalid JSON.", "error");
-          setBusy(false);
-          stopPolling();
+          pollErrorCount += 1;
+
+          if (pollErrorCount < maxPollErrors) {
+            schedulePollRetry(jobId, 3000, "Received invalid response. Retrying...");
+          } else {
+            setStatus("Polling failed due to invalid responses.", "error");
+            setBusy(false);
+            stopPolling();
+          }
           return;
         }
+
+        pollErrorCount = 0;
 
         rawBox.textContent = formatRaw(data);
         updateProgress(data);
@@ -631,8 +690,9 @@
           setStatus(data.message || ("Job is " + data.status + "..."));
           setBusy(true);
 
-          var interval = data.status === "queued" ? 2000 : 2500;
+          var interval = data.status === "queued" ? 2500 : 3000;
 
+          stopPolling();
           pollTimer = setTimeout(function () {
             pollJob(jobId);
           }, interval);
@@ -672,9 +732,27 @@
       };
 
       xhr.onerror = function () {
-        setStatus("Polling failed.", "error");
-        setBusy(false);
-        stopPolling();
+        pollErrorCount += 1;
+
+        if (pollErrorCount < maxPollErrors) {
+          schedulePollRetry(jobId, 3000, "Connection hiccup. Retrying...");
+        } else {
+          setStatus("Polling failed after multiple retries.", "error");
+          setBusy(false);
+          stopPolling();
+        }
+      };
+
+      xhr.ontimeout = function () {
+        pollErrorCount += 1;
+
+        if (pollErrorCount < maxPollErrors) {
+          schedulePollRetry(jobId, 4000, "Polling timed out. Retrying...");
+        } else {
+          setStatus("Polling timed out repeatedly.", "error");
+          setBusy(false);
+          stopPolling();
+        }
       };
 
       xhr.send();
@@ -693,6 +771,7 @@
       }
 
       stopPolling();
+      pollErrorCount = 0;
       setBusy(true);
       setStatus("Submitting job...");
       downloadsBox.textContent = "No downloads yet.";
@@ -718,6 +797,7 @@
 
       var xhr = new XMLHttpRequest();
       xhr.open("POST", "/generate", true);
+      xhr.timeout = 15000;
 
       xhr.onreadystatechange = function () {
         if (xhr.readyState !== 4) {
@@ -749,6 +829,11 @@
 
       xhr.onerror = function () {
         setStatus("Generate request failed.", "error");
+        setBusy(false);
+      };
+
+      xhr.ontimeout = function () {
+        setStatus("Generate request timed out.", "error");
         setBusy(false);
       };
 
