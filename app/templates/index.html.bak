@@ -235,13 +235,6 @@
           {% endfor %}
         </select>
 
-        <label for="shape_family">Shape family</label>
-        <select id="shape_family">
-          {% for key, label in shape_families.items() %}
-          <option value="{{ key }}">{{ label }}</option>
-          {% endfor %}
-        </select>
-
         <label for="export_mode">Export mode</label>
         <select id="export_mode">
           <option value="single_stl">Single STL</option>
@@ -316,6 +309,7 @@
 
     var currentJobId = null;
     var pollTimer = null;
+    var latestRegionFiles = [];
 
     function setStatus(text, kind) {
       statusBox.className = "status";
@@ -412,6 +406,7 @@
       if (!data) return "No data.";
 
       var out = "";
+
       out += "status: " + (data.status || "unknown") + "\n";
 
       if (data.stage) {
@@ -440,7 +435,6 @@
         if (data.result.stl_url) out += "  STL: yes\n";
         if (data.result.png_url) out += "  PNG preview: yes\n";
         if (data.result.zip_url) out += "  ZIP: yes\n";
-        if (data.result.shape_family) out += "  shape family: " + data.result.shape_family + "\n";
       }
 
       return out;
@@ -539,6 +533,7 @@
     }
 
     function renderRegionPreviewPicker(result) {
+      latestRegionFiles = [];
       regionPreviewSelect.innerHTML = "";
       regionPreviewWrap.style.display = "none";
 
@@ -557,6 +552,8 @@
         return;
       }
 
+      latestRegionFiles = pngRegions;
+
       var defaultOption = document.createElement("option");
       defaultOption.value = "";
       defaultOption.textContent = "-- select region preview --";
@@ -574,7 +571,9 @@
 
     regionPreviewSelect.addEventListener("change", function () {
       var url = regionPreviewSelect.value;
-      if (!url) return;
+      if (!url) {
+        return;
+      }
       updatePreview(url);
     });
 
@@ -685,7 +684,6 @@
       var preset = document.getElementById("preset").value;
       var exportMode = document.getElementById("export_mode").value;
       var sourceMax = document.getElementById("source_max").value;
-      var shapeFamily = document.getElementById("shape_family").value;
 
       if (!demoFile) {
         setStatus("Please choose a demo dataset.", "error");
@@ -712,7 +710,6 @@
       var formData = new FormData();
       formData.append("demo_file", demoFile);
       formData.append("preset", preset);
-      formData.append("shape_family", shapeFamily);
       formData.append("export_mode", exportMode);
       formData.append("source_max", sourceMax);
 

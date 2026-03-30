@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import math
 import mimetypes
+import random
 import shutil
 import subprocess
 import tempfile
@@ -82,6 +83,78 @@ PRESETS = {
         "branch_thickness_multiplier": 1.0,
     },
 }
+
+SHAPE_FAMILIES = {
+    "mixed": "Mixed Ocean",
+    "coral": "Coral",
+    "starfish": "Starfish",
+    "shell": "Shell",
+    "seaweed": "Seaweed",
+    "bubbles": "Bubbles",
+}
+
+SCAD_CORAL = r"""
+$fn = 48;
+
+module branch(h=60) {
+    for (i=[0:10]) {
+        translate([sin(i*20)*10,0,i*6])
+            sphere(r=3 - i*0.2);
+    }
+}
+
+for (i=[0:6]) {
+    rotate([0,0,i*60]) branch();
+}
+"""
+
+SCAD_STARFISH = r"""
+$fn = 64;
+
+module arm(len=30, width=6) {
+    hull() {
+        sphere(r=width);
+        translate([len, 0, 0]) sphere(r=width * 0.3);
+    }
+}
+
+for (i = [0:4]) {
+    rotate([0,0,i*72])
+        arm();
+}
+"""
+
+SCAD_SHELL = r"""
+$fn = 64;
+
+for (i = [0:40]) {
+    rotate([0,0,i*10])
+        translate([i*0.5,0,i*0.3])
+            sphere(r=4 - i*0.08);
+}
+"""
+
+SCAD_SEAWEED = r"""
+$fn = 48;
+
+for (i = [0:20]) {
+    translate([sin(i*10)*5,0,i*4])
+        sphere(r=3 - i*0.1);
+}
+"""
+
+SCAD_BUBBLES = r"""
+$fn = 32;
+
+for (i = [0:40]) {
+    translate([
+        rands(-40,40,1)[0],
+        rands(-40,40,1)[0],
+        rands(0,80,1)[0]
+    ])
+    sphere(r=rands(1,5,1)[0]);
+}
+"""
 
 SCAD_TEMPLATE = r"""
 $fn = 48;
@@ -320,6 +393,33 @@ regional_cluster(
     )
 
 
+def choose_template(shape_family: str) -> str:
+    mapping = {
+        "coral": SCAD_CORAL,
+        "starfish": SCAD_STARFISH,
+        "shell": SCAD_SHELL,
+        "seaweed": SCAD_SEAWEED,
+        "bubbles": SCAD_BUBBLES,
+    }
+    if shape_family == "mixed":
+        return random.choice(list(mapping.values()))
+    return mapping.get(shape_family, SCAD_CORAL)
+
+
+def build_summary(agg: dict[str, Any]) -> dict[str, Any]:
+    rows = []
+    for region in REGION_ORDER:
+        rows.append({
+            "region": region,
+            "count": agg["counts_by_region"].get(region, 0),
+            "recent_24h": agg["recent_by_region"].get(region, 0),
+        })
+    return {
+        "total": agg["total"],
+        "regions": rows,
+    }
+
+
 def run_openscad(scad_path: Path, stl_path: Path) -> tuple[bool, str]:
     cmd = ["openscad", "-o", str(stl_path), str(scad_path)]
     try:
@@ -364,20 +464,6 @@ def render_png_from_scad(scad_path: Path, png_path: Path) -> tuple[bool, str]:
     return True, ""
 
 
-def build_summary(agg: dict[str, Any]) -> dict[str, Any]:
-    rows = []
-    for region in REGION_ORDER:
-        rows.append({
-            "region": region,
-            "count": agg["counts_by_region"].get(region, 0),
-            "recent_24h": agg["recent_by_region"].get(region, 0),
-        })
-    return {
-        "total": agg["total"],
-        "regions": rows,
-    }
-
-
 def update_job(job_id: str, **updates: Any) -> None:
     with JOBS_LOCK:
         if job_id in JOBS:
@@ -415,6 +501,7 @@ def process_job(job_id: str, request_data: dict[str, Any]) -> None:
         core_height_multiplier = float(request_data["core_height_multiplier"])
         branch_density_multiplier = float(request_data["branch_density_multiplier"])
         branch_thickness_multiplier = float(request_data["branch_thickness_multiplier"])
+        shape_family = request_data["shape_family"]
 
         dataset_path = DATA_DIR / demo_file
         if not dataset_path.exists():
@@ -458,10 +545,18 @@ def process_job(job_id: str, request_data: dict[str, Any]) -> None:
         main_stl_path = OUTPUT_DIR / main_stl_name
         main_png_path = OUTPUT_DIR / main_png_name
 
-        main_scad_path.write_text(
-            render_scad(SCAD_TEMPLATE, model_data, title=title, region_filter=""),
-            encoding="utf-8",
-        )
+        template = choose_template(shape_family)
+        if shape_family == "coral":
+            scad_code = render_scad(template, model_data, title=title, region_filter="")
+        elif shape_family == "mixed":
+            if template == SCAD_CORAL:
+                scad_code = render_scad(template, model_data, title=title, region_filter="")
+            else:
+                scad_code = template
+        else:
+            scad_code = template
+
+        main_scad_path.write_text(scad_code, encoding="utf-8")
 
         result: dict[str, Any] = {
             "job_id": job_id,
@@ -469,6 +564,7 @@ def process_job(job_id: str, request_data: dict[str, Any]) -> None:
             "summary": summary,
             "preset": request_data["preset"],
             "export_mode": export_mode,
+            "shape_family": shape_family,
             "scad_url": f"/generated/{main_scad_name}",
             "stl_url": None,
             "png_url": None,
@@ -580,6 +676,7 @@ def process_job(job_id: str, request_data: dict[str, Any]) -> None:
                     "dataset_name": demo_file,
                     "export_mode": export_mode,
                     "summary": summary,
+                    "shape_family": shape_family,
                     "params": result["params"],
                 }
                 (temp_dir / "params.json").write_text(
@@ -589,21 +686,10 @@ def process_job(job_id: str, request_data: dict[str, Any]) -> None:
                 shutil.copy2(main_scad_path, temp_dir / main_scad_name)
 
                 active_branches = [b for b in model_data["branches"] if b["source_count"] > 0]
-                total_regions = len(active_branches)
+                total_regions = max(len(active_branches), 1)
 
-                for idx, branch in enumerate(active_branches, start=1):
-                    region_progress = 35 + int((idx / max(total_regions, 1)) * 55)
-                    remaining_regions = max(total_regions - idx, 0)
-
-                    update_job(
-                        job_id,
-                        message=f"Rendering region {idx}/{total_regions}: {branch['region']}...",
-                        progress=region_progress,
-                        stage="rendering_regions",
-                        eta_seconds=max(remaining_regions * 12, 8),
-                    )
-
-                    region_slug = branch["region"].lower().replace(" ", "_").replace("-", "_")
+                if shape_family != "coral":
+                    region_slug = "main"
                     region_scad_name = f"reef_{job_id}_{region_slug}.scad"
                     region_stl_name = f"reef_{job_id}_{region_slug}.stl"
                     region_png_name = f"reef_{job_id}_{region_slug}.png"
@@ -612,22 +698,14 @@ def process_job(job_id: str, request_data: dict[str, Any]) -> None:
                     region_stl_path = OUTPUT_DIR / region_stl_name
                     region_png_path = OUTPUT_DIR / region_png_name
 
-                    region_scad_path.write_text(
-                        render_scad(
-                            SCAD_TEMPLATE,
-                            model_data,
-                            title=f"{title} - {branch['region']}",
-                            region_filter=branch["region"],
-                        ),
-                        encoding="utf-8",
-                    )
+                    region_scad_path.write_text(scad_code, encoding="utf-8")
 
                     ok, message = run_openscad(region_scad_path, region_stl_path)
                     if not ok:
                         update_job(
                             job_id,
                             status="error",
-                            message=f"{branch['region']}: {message}",
+                            message=message,
                             result=result,
                             summary=summary,
                             stage="error",
@@ -636,7 +714,7 @@ def process_job(job_id: str, request_data: dict[str, Any]) -> None:
                         return
 
                     region_png_url = None
-                    ok, png_message = render_png_from_scad(region_scad_path, region_png_path)
+                    ok, _ = render_png_from_scad(region_scad_path, region_png_path)
                     if ok:
                         region_png_url = f"/output/{region_png_name}"
 
@@ -646,11 +724,72 @@ def process_job(job_id: str, request_data: dict[str, Any]) -> None:
                         shutil.copy2(region_png_path, temp_dir / region_png_name)
 
                     region_files.append({
-                        "region": branch["region"],
+                        "region": "Main",
                         "scad_url": f"/generated/{region_scad_name}",
                         "stl_url": f"/output/{region_stl_name}",
                         "png_url": region_png_url,
                     })
+                else:
+                    for idx, branch in enumerate(active_branches, start=1):
+                        region_progress = 35 + int((idx / total_regions) * 55)
+                        remaining_regions = max(total_regions - idx, 0)
+
+                        update_job(
+                            job_id,
+                            message=f"Rendering region {idx}/{total_regions}: {branch['region']}...",
+                            progress=region_progress,
+                            stage="rendering_regions",
+                            eta_seconds=max(remaining_regions * 12, 8),
+                        )
+
+                        region_slug = branch["region"].lower().replace(" ", "_").replace("-", "_")
+                        region_scad_name = f"reef_{job_id}_{region_slug}.scad"
+                        region_stl_name = f"reef_{job_id}_{region_slug}.stl"
+                        region_png_name = f"reef_{job_id}_{region_slug}.png"
+
+                        region_scad_path = GENERATED_DIR / region_scad_name
+                        region_stl_path = OUTPUT_DIR / region_stl_name
+                        region_png_path = OUTPUT_DIR / region_png_name
+
+                        region_scad_path.write_text(
+                            render_scad(
+                                SCAD_TEMPLATE,
+                                model_data,
+                                title=f"{title} - {branch['region']}",
+                                region_filter=branch["region"],
+                            ),
+                            encoding="utf-8",
+                        )
+
+                        ok, message = run_openscad(region_scad_path, region_stl_path)
+                        if not ok:
+                            update_job(
+                                job_id,
+                                status="error",
+                                message=f"{branch['region']}: {message}",
+                                result=result,
+                                summary=summary,
+                                stage="error",
+                                eta_seconds=None,
+                            )
+                            return
+
+                        region_png_url = None
+                        ok, _ = render_png_from_scad(region_scad_path, region_png_path)
+                        if ok:
+                            region_png_url = f"/output/{region_png_name}"
+
+                        shutil.copy2(region_scad_path, temp_dir / region_scad_name)
+                        shutil.copy2(region_stl_path, temp_dir / region_stl_name)
+                        if region_png_url and region_png_path.exists():
+                            shutil.copy2(region_png_path, temp_dir / region_png_name)
+
+                        region_files.append({
+                            "region": branch["region"],
+                            "scad_url": f"/generated/{region_scad_name}",
+                            "stl_url": f"/output/{region_stl_name}",
+                            "png_url": region_png_url,
+                        })
 
                 update_job(
                     job_id,
@@ -714,6 +853,7 @@ async def index(request: Request) -> HTMLResponse:
             "request": request,
             "demo_files": list_demo_files(),
             "presets": PRESETS,
+            "shape_families": SHAPE_FAMILIES,
         },
     )
 
@@ -733,6 +873,7 @@ async def generate(
     core_height_multiplier: float = Form(default=1.0),
     branch_density_multiplier: float = Form(default=1.0),
     branch_thickness_multiplier: float = Form(default=1.0),
+    shape_family: str = Form(default="mixed"),
     upload_file: UploadFile | None = File(default=None),
 ) -> JSONResponse:
     if upload_file and upload_file.filename:
@@ -778,6 +919,7 @@ async def generate(
         "core_height_multiplier": core_height_multiplier,
         "branch_density_multiplier": branch_density_multiplier,
         "branch_thickness_multiplier": branch_thickness_multiplier,
+        "shape_family": shape_family,
     }
 
     thread = threading.Thread(target=process_job, args=(job_id, request_data), daemon=True)

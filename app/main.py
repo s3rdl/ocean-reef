@@ -50,15 +50,6 @@ REGION_ORDER = [
     "Oceania",
 ]
 
-REGION_COLORS = {
-    "Europe": [0.15, 0.55, 0.85],
-    "Africa": [0.90, 0.75, 0.35],
-    "Asia-Pacific": [0.20, 0.75, 0.65],
-    "North America": [0.75, 0.40, 0.85],
-    "South America": [0.35, 0.75, 0.35],
-    "Oceania": [0.95, 0.45, 0.45],
-}
-
 PRESETS = {
     "balanced": {
         "label": "Balanced",
@@ -76,15 +67,23 @@ PRESETS = {
     },
     "dramatic": {
         "label": "Dramatic",
-        "base_radius_multiplier": 1.1,
+        "base_radius_multiplier": 1.10,
         "core_height_multiplier": 1.15,
-        "branch_density_multiplier": 1.25,
-        "branch_thickness_multiplier": 1.0,
+        "branch_density_multiplier": 1.20,
+        "branch_thickness_multiplier": 1.05,
     },
 }
 
-SCAD_TEMPLATE = r"""
-$fn = 48;
+SHAPE_FAMILIES = {
+    "coral": "Coral",
+    "starfish": "Starfish",
+    "shell": "Shell",
+    "seaweed": "Seaweed",
+    "clownfish": "Clownfish",
+}
+
+SCAD_CORAL = r"""
+$fn = 56;
 
 // {{TITLE}}
 
@@ -106,12 +105,12 @@ module trunk(height, r1=11, r2=7) {
     }
 }
 
-module branch_segment(length=28, radius=3.2, angle=18) {
+module branch_segment(length=28, radius=3.6, angle=18) {
     rotate([0, angle, 0])
         cylinder(h=length, r1=radius, r2=radius * 0.72);
 }
 
-module organic_tip(length=14, radius=2.0, angle=22) {
+module organic_tip(length=14, radius=2.4, angle=22) {
     rotate([0, angle, 0])
         hull() {
             cylinder(h=length * 0.6, r1=radius, r2=radius * 0.55);
@@ -119,7 +118,7 @@ module organic_tip(length=14, radius=2.0, angle=22) {
         }
 }
 
-module coral_branch(branch_height=50, branch_radius=3.4, lean=16, twist=0) {
+module coral_branch(branch_height=50, branch_radius=3.8, lean=16, twist=0) {
     union() {
         branch_segment(length=branch_height * 0.55, radius=branch_radius, angle=lean);
 
@@ -129,7 +128,7 @@ module coral_branch(branch_height=50, branch_radius=3.4, lean=16, twist=0) {
             branch_height * 0.48
         ])
         rotate([0, 0, twist])
-        branch_segment(length=branch_height * 0.32, radius=branch_radius * 0.78, angle=lean + 5);
+        branch_segment(length=branch_height * 0.32, radius=branch_radius * 0.80, angle=lean + 5);
 
         translate([
             sin(lean) * branch_height * 0.12,
@@ -137,13 +136,12 @@ module coral_branch(branch_height=50, branch_radius=3.4, lean=16, twist=0) {
             branch_height * 0.68
         ])
         rotate([0, 0, -twist])
-        organic_tip(length=branch_height * 0.24, radius=branch_radius * 0.58, angle=lean + 10);
+        organic_tip(length=branch_height * 0.24, radius=branch_radius * 0.62, angle=lean + 10);
     }
 }
 
-module regional_cluster(region_name, cluster_count, branch_height, branch_radius, sector_start, sector_end, twist, rgb=[0.8, 0.8, 0.8]) {
+module regional_cluster(region_name, cluster_count, branch_height, branch_radius, sector_start, sector_end, twist) {
     if (region_filter == "" || region_filter == region_name) {
-        color(rgb)
         union() {
             for (i = [0 : cluster_count - 1]) {
                 angle = sector_start + (sector_end - sector_start) * (i + 0.5) / cluster_count;
@@ -165,16 +163,218 @@ module regional_cluster(region_name, cluster_count, branch_height, branch_radius
 }
 
 union() {
-    color([0.92, 0.90, 0.82])
-        rounded_base(base_radius, 12);
-
-    color([0.82, 0.77, 0.68])
-        translate([0, 0, 8])
-            trunk(core_height);
-
+    rounded_base(base_radius, 12);
+    translate([0, 0, 8]) trunk(core_height);
     {{BRANCH_BLOCKS}}
 }
 """
+
+SCAD_STARFISH = r"""
+$fn = 72;
+
+// {{TITLE}}
+
+size_factor = {{SIZE_FACTOR}};
+thickness = 8 * size_factor;
+arm_length = 34 * size_factor;
+arm_width = 11 * size_factor;
+
+module arm() {
+    hull() {
+        translate([0, 0, 0]) cylinder(h=thickness, r=arm_width);
+        translate([arm_length * 0.55, 0, 0]) cylinder(h=thickness * 0.90, r=arm_width * 0.62);
+        translate([arm_length, 0, 0]) cylinder(h=thickness * 0.72, r=arm_width * 0.24);
+    }
+}
+
+module center_body() {
+    hull() {
+        cylinder(h=thickness, r=arm_width * 1.05);
+        translate([0, 0, thickness * 0.20]) cylinder(h=thickness * 0.65, r=arm_width * 0.92);
+    }
+}
+
+union() {
+    center_body();
+    for (i = [0:4]) {
+        rotate([0, 0, i * 72]) arm();
+    }
+}
+"""
+
+SCAD_SHELL = r"""
+$fn = 72;
+
+// {{TITLE}}
+
+size_factor = {{SIZE_FACTOR}};
+turns = 14;
+step_angle = 18;
+base_r = 5.8 * size_factor;
+
+module shell_segment(idx) {
+    angle = idx * step_angle;
+    radius = idx * 1.25 * size_factor;
+    z = idx * 0.90 * size_factor;
+    r = max(base_r - idx * 0.22 * size_factor, 1.35 * size_factor);
+
+    rotate([0, 0, angle])
+        translate([radius, 0, z])
+            sphere(r=r);
+}
+
+union() {
+    for (i = [0:turns]) {
+        hull() {
+            shell_segment(i);
+            shell_segment(i + 1);
+        }
+    }
+
+    hull() {
+        shell_segment(0);
+        translate([0, 0, 2.5 * size_factor]) sphere(r=base_r * 1.04);
+    }
+}
+"""
+
+SCAD_SEAWEED = r"""
+$fn = 72;
+
+// {{TITLE}}
+
+size_factor = {{SIZE_FACTOR}};
+blade_count = 5;
+blade_height = 92 * size_factor;
+base_radius = 14 * size_factor;
+
+module segment_pair(x0, y0, z0, r0, x1, y1, z1, r1) {
+    hull() {
+        translate([x0, y0, z0]) sphere(r=r0);
+        translate([x1, y1, z1]) sphere(r=r1);
+    }
+}
+
+module blade(seed_angle=0, bend=1.0, spread=1.0) {
+    union() {
+        for (i = [0:11]) {
+            z0 = i * blade_height / 12;
+            z1 = (i + 1) * blade_height / 12;
+
+            x0 = sin(seed_angle + i * 10) * (3.5 + i * 0.45) * bend * size_factor;
+            x1 = sin(seed_angle + (i + 1) * 10) * (3.5 + (i + 1) * 0.45) * bend * size_factor;
+
+            y0 = cos(seed_angle + i * 7) * 1.2 * spread * size_factor;
+            y1 = cos(seed_angle + (i + 1) * 7) * 1.2 * spread * size_factor;
+
+            r0 = max((7.0 - i * 0.42) * size_factor, 1.45 * size_factor);
+            r1 = max((7.0 - (i + 1) * 0.42) * size_factor, 1.10 * size_factor);
+
+            segment_pair(x0, y0, z0, r0, x1, y1, z1, r1);
+        }
+    }
+}
+
+module holdfast() {
+    hull() {
+        cylinder(h=6 * size_factor, r=base_radius);
+        translate([0, 0, 2 * size_factor]) cylinder(h=4 * size_factor, r=base_radius * 0.78);
+    }
+}
+
+union() {
+    holdfast();
+
+    for (i = [0:blade_count - 1]) {
+        rotate([0, 0, i * (360 / blade_count)])
+            translate([base_radius * 0.30, 0, 3.0 * size_factor])
+                blade(seed_angle=i * 19, bend=0.90 + 0.06 * i, spread=0.85 + 0.05 * i);
+    }
+}
+"""
+
+SCAD_CLOWNFISH = r"""
+$fn = 84;
+
+// {{TITLE}}
+
+size_factor = {{SIZE_FACTOR}};
+body_h = 18 * size_factor;
+body_w = 13 * size_factor;
+body_len = 66 * size_factor;
+tail_len = 16 * size_factor;
+stripe_depth = 1.8 * size_factor;
+
+module fish_core() {
+    hull() {
+        translate([-body_len * 0.38, 0, 0]) scale([1.05, 0.92, 0.74]) sphere(r=body_h);
+        translate([-6 * size_factor, 0, 0]) scale([1.25, 1.0, 0.84]) sphere(r=body_h);
+        translate([body_len * 0.15, 0, 0]) scale([1.15, 0.96, 0.78]) sphere(r=body_h * 0.95);
+        translate([body_len * 0.38, 0, 0]) scale([0.75, 0.85, 0.60]) sphere(r=body_h * 0.90);
+    }
+}
+
+module tail_fin() {
+    hull() {
+        translate([body_len * 0.48, 0, 0]) scale([0.36, 0.55, 0.46]) sphere(r=body_h);
+        translate([body_len * 0.48 + tail_len, 0, body_h * 0.62]) sphere(r=body_w * 0.62);
+        translate([body_len * 0.48 + tail_len, 0, -body_h * 0.62]) sphere(r=body_w * 0.62);
+    }
+}
+
+module dorsal_fin() {
+    hull() {
+        translate([-8 * size_factor, 0, body_h * 0.76]) sphere(r=body_w * 0.48);
+        translate([8 * size_factor, 0, body_h * 1.20]) sphere(r=body_w * 0.34);
+        translate([22 * size_factor, 0, body_h * 0.80]) sphere(r=body_w * 0.24);
+    }
+}
+
+module ventral_fin() {
+    hull() {
+        translate([0, 0, -body_h * 0.58]) sphere(r=body_w * 0.34);
+        translate([14 * size_factor, 0, -body_h * 0.92]) sphere(r=body_w * 0.22);
+        translate([22 * size_factor, 0, -body_h * 0.62]) sphere(r=body_w * 0.18);
+    }
+}
+
+module pectoral_fin() {
+    hull() {
+        translate([-10 * size_factor, body_w * 0.62, -1 * size_factor]) sphere(r=body_w * 0.28);
+        translate([2 * size_factor, body_w * 1.02, 2 * size_factor]) sphere(r=body_w * 0.18);
+        translate([10 * size_factor, body_w * 0.70, 0]) sphere(r=body_w * 0.14);
+    }
+}
+
+module clownfish_raw() {
+    union() {
+        fish_core();
+        tail_fin();
+        dorsal_fin();
+        ventral_fin();
+        pectoral_fin();
+    }
+}
+
+module stripe_cut(xpos, width, tilt=0) {
+    translate([xpos, 0, 0])
+        rotate([0, tilt, 0])
+            cube([width, body_w * 3.0, body_h * 3.0], center=true);
+}
+
+difference() {
+    clownfish_raw();
+
+    // eye
+    translate([-body_len * 0.22, body_w * 0.34, body_h * 0.22]) sphere(r=body_w * 0.13);
+
+    // clownfish stripe grooves
+    stripe_cut(-body_len * 0.18, stripe_depth, 8);
+    stripe_cut(0, stripe_depth * 1.2, 3);
+    stripe_cut(body_len * 0.22, stripe_depth, -4);
+}
+"""
+
 
 JOBS: dict[str, dict[str, Any]] = {}
 JOBS_LOCK = threading.Lock()
@@ -262,12 +462,12 @@ def build_branch_data(
         if count == 0:
             branch_count = 1
             branch_height = 18.0
-            branch_radius = 2.4 * branch_thickness_multiplier
+            branch_radius = 2.8 * branch_thickness_multiplier
             twist = 0.0
         else:
             branch_count = max(2, min(12, math.ceil(region_ratio * 18 * branch_density_multiplier)))
             branch_height = 28.0 + region_ratio * 95.0
-            branch_radius = (2.6 + region_ratio * 6.0) * branch_thickness_multiplier
+            branch_radius = (2.8 + region_ratio * 6.4) * branch_thickness_multiplier
             twist = min(18.0, recent * 1.2)
 
         sector_start = index * (360.0 / len(REGION_ORDER))
@@ -275,7 +475,6 @@ def build_branch_data(
 
         branches.append({
             "region": region,
-            "color": REGION_COLORS[region],
             "count": branch_count,
             "height": round(branch_height, 2),
             "radius": round(branch_radius, 2),
@@ -292,7 +491,7 @@ def build_branch_data(
     }
 
 
-def render_scad(template: str, model_data: dict[str, Any], title: str, region_filter: str = "") -> str:
+def render_coral_scad(template: str, model_data: dict[str, Any], title: str, region_filter: str = "") -> str:
     branch_blocks = []
 
     for branch in model_data["branches"]:
@@ -304,8 +503,7 @@ regional_cluster(
     branch_radius={branch['radius']},
     sector_start={branch['sector_start']},
     sector_end={branch['sector_end']},
-    twist={branch['twist']},
-    rgb=[{branch['color'][0]}, {branch['color'][1]}, {branch['color'][2]}]
+    twist={branch['twist']}
 );
 """
         branch_blocks.append(block)
@@ -318,6 +516,38 @@ regional_cluster(
         .replace("{{REGION_FILTER}}", region_filter)
         .replace("{{BRANCH_BLOCKS}}", "\n".join(branch_blocks))
     )
+
+
+def render_simple_scad(template: str, title: str, size_factor: float) -> str:
+    return (
+        template
+        .replace("{{TITLE}}", title)
+        .replace("{{SIZE_FACTOR}}", str(round(size_factor, 3)))
+    )
+
+
+def build_shape_scad(
+    shape_family: str,
+    title: str,
+    model_data: dict[str, Any],
+    total: int,
+    source_max: int,
+) -> str:
+    if shape_family == "coral":
+        return render_coral_scad(SCAD_CORAL, model_data, title=title, region_filter="")
+
+    size_factor = scale_total(total, source_max, 0.85, 1.55)
+
+    if shape_family == "starfish":
+        return render_simple_scad(SCAD_STARFISH, title=title, size_factor=size_factor)
+    if shape_family == "shell":
+        return render_simple_scad(SCAD_SHELL, title=title, size_factor=size_factor)
+    if shape_family == "seaweed":
+        return render_simple_scad(SCAD_SEAWEED, title=title, size_factor=size_factor)
+    if shape_family == "clownfish":
+        return render_simple_scad(SCAD_CLOWNFISH, title=title, size_factor=size_factor)
+
+    return render_coral_scad(SCAD_CORAL, model_data, title=title, region_filter="")
 
 
 def run_openscad(scad_path: Path, stl_path: Path) -> tuple[bool, str]:
@@ -415,6 +645,7 @@ def process_job(job_id: str, request_data: dict[str, Any]) -> None:
         core_height_multiplier = float(request_data["core_height_multiplier"])
         branch_density_multiplier = float(request_data["branch_density_multiplier"])
         branch_thickness_multiplier = float(request_data["branch_thickness_multiplier"])
+        shape_family = request_data["shape_family"]
 
         dataset_path = DATA_DIR / demo_file
         if not dataset_path.exists():
@@ -449,7 +680,9 @@ def process_job(job_id: str, request_data: dict[str, Any]) -> None:
             branch_thickness_multiplier=branch_thickness_multiplier,
         )
 
-        title = f"Ocean Reef Prototype - {demo_file}"
+        total = agg["total"]
+
+        title = f"Ocean Reef Prototype - {demo_file} - {shape_family}"
         main_scad_name = f"reef_{job_id}.scad"
         main_stl_name = f"reef_{job_id}.stl"
         main_png_name = f"reef_{job_id}.png"
@@ -458,10 +691,14 @@ def process_job(job_id: str, request_data: dict[str, Any]) -> None:
         main_stl_path = OUTPUT_DIR / main_stl_name
         main_png_path = OUTPUT_DIR / main_png_name
 
-        main_scad_path.write_text(
-            render_scad(SCAD_TEMPLATE, model_data, title=title, region_filter=""),
-            encoding="utf-8",
+        scad_code = build_shape_scad(
+            shape_family=shape_family,
+            title=title,
+            model_data=model_data,
+            total=total,
+            source_max=source_max,
         )
+        main_scad_path.write_text(scad_code, encoding="utf-8")
 
         result: dict[str, Any] = {
             "job_id": job_id,
@@ -469,6 +706,7 @@ def process_job(job_id: str, request_data: dict[str, Any]) -> None:
             "summary": summary,
             "preset": request_data["preset"],
             "export_mode": export_mode,
+            "shape_family": shape_family,
             "scad_url": f"/generated/{main_scad_name}",
             "stl_url": None,
             "png_url": None,
@@ -580,6 +818,7 @@ def process_job(job_id: str, request_data: dict[str, Any]) -> None:
                     "dataset_name": demo_file,
                     "export_mode": export_mode,
                     "summary": summary,
+                    "shape_family": shape_family,
                     "params": result["params"],
                 }
                 (temp_dir / "params.json").write_text(
@@ -588,22 +827,8 @@ def process_job(job_id: str, request_data: dict[str, Any]) -> None:
                 )
                 shutil.copy2(main_scad_path, temp_dir / main_scad_name)
 
-                active_branches = [b for b in model_data["branches"] if b["source_count"] > 0]
-                total_regions = len(active_branches)
-
-                for idx, branch in enumerate(active_branches, start=1):
-                    region_progress = 35 + int((idx / max(total_regions, 1)) * 55)
-                    remaining_regions = max(total_regions - idx, 0)
-
-                    update_job(
-                        job_id,
-                        message=f"Rendering region {idx}/{total_regions}: {branch['region']}...",
-                        progress=region_progress,
-                        stage="rendering_regions",
-                        eta_seconds=max(remaining_regions * 12, 8),
-                    )
-
-                    region_slug = branch["region"].lower().replace(" ", "_").replace("-", "_")
+                if shape_family != "coral":
+                    region_slug = "main"
                     region_scad_name = f"reef_{job_id}_{region_slug}.scad"
                     region_stl_name = f"reef_{job_id}_{region_slug}.stl"
                     region_png_name = f"reef_{job_id}_{region_slug}.png"
@@ -612,22 +837,14 @@ def process_job(job_id: str, request_data: dict[str, Any]) -> None:
                     region_stl_path = OUTPUT_DIR / region_stl_name
                     region_png_path = OUTPUT_DIR / region_png_name
 
-                    region_scad_path.write_text(
-                        render_scad(
-                            SCAD_TEMPLATE,
-                            model_data,
-                            title=f"{title} - {branch['region']}",
-                            region_filter=branch["region"],
-                        ),
-                        encoding="utf-8",
-                    )
+                    region_scad_path.write_text(scad_code, encoding="utf-8")
 
                     ok, message = run_openscad(region_scad_path, region_stl_path)
                     if not ok:
                         update_job(
                             job_id,
                             status="error",
-                            message=f"{branch['region']}: {message}",
+                            message=message,
                             result=result,
                             summary=summary,
                             stage="error",
@@ -636,7 +853,7 @@ def process_job(job_id: str, request_data: dict[str, Any]) -> None:
                         return
 
                     region_png_url = None
-                    ok, png_message = render_png_from_scad(region_scad_path, region_png_path)
+                    ok, _ = render_png_from_scad(region_scad_path, region_png_path)
                     if ok:
                         region_png_url = f"/output/{region_png_name}"
 
@@ -646,11 +863,75 @@ def process_job(job_id: str, request_data: dict[str, Any]) -> None:
                         shutil.copy2(region_png_path, temp_dir / region_png_name)
 
                     region_files.append({
-                        "region": branch["region"],
+                        "region": "Main",
                         "scad_url": f"/generated/{region_scad_name}",
                         "stl_url": f"/output/{region_stl_name}",
                         "png_url": region_png_url,
                     })
+                else:
+                    active_branches = [b for b in model_data["branches"] if b["source_count"] > 0]
+                    total_regions = max(len(active_branches), 1)
+
+                    for idx, branch in enumerate(active_branches, start=1):
+                        region_progress = 35 + int((idx / total_regions) * 55)
+                        remaining_regions = max(total_regions - idx, 0)
+
+                        update_job(
+                            job_id,
+                            message=f"Rendering region {idx}/{total_regions}: {branch['region']}...",
+                            progress=region_progress,
+                            stage="rendering_regions",
+                            eta_seconds=max(remaining_regions * 12, 8),
+                        )
+
+                        region_slug = branch["region"].lower().replace(" ", "_").replace("-", "_")
+                        region_scad_name = f"reef_{job_id}_{region_slug}.scad"
+                        region_stl_name = f"reef_{job_id}_{region_slug}.stl"
+                        region_png_name = f"reef_{job_id}_{region_slug}.png"
+
+                        region_scad_path = GENERATED_DIR / region_scad_name
+                        region_stl_path = OUTPUT_DIR / region_stl_name
+                        region_png_path = OUTPUT_DIR / region_png_name
+
+                        region_scad_path.write_text(
+                            render_coral_scad(
+                                SCAD_CORAL,
+                                model_data,
+                                title=f"{title} - {branch['region']}",
+                                region_filter=branch["region"],
+                            ),
+                            encoding="utf-8",
+                        )
+
+                        ok, message = run_openscad(region_scad_path, region_stl_path)
+                        if not ok:
+                            update_job(
+                                job_id,
+                                status="error",
+                                message=f"{branch['region']}: {message}",
+                                result=result,
+                                summary=summary,
+                                stage="error",
+                                eta_seconds=None,
+                            )
+                            return
+
+                        region_png_url = None
+                        ok, _ = render_png_from_scad(region_scad_path, region_png_path)
+                        if ok:
+                            region_png_url = f"/output/{region_png_name}"
+
+                        shutil.copy2(region_scad_path, temp_dir / region_scad_name)
+                        shutil.copy2(region_stl_path, temp_dir / region_stl_name)
+                        if region_png_url and region_png_path.exists():
+                            shutil.copy2(region_png_path, temp_dir / region_png_name)
+
+                        region_files.append({
+                            "region": branch["region"],
+                            "scad_url": f"/generated/{region_scad_name}",
+                            "stl_url": f"/output/{region_stl_name}",
+                            "png_url": region_png_url,
+                        })
 
                 update_job(
                     job_id,
@@ -714,6 +995,7 @@ async def index(request: Request) -> HTMLResponse:
             "request": request,
             "demo_files": list_demo_files(),
             "presets": PRESETS,
+            "shape_families": SHAPE_FAMILIES,
         },
     )
 
@@ -733,6 +1015,7 @@ async def generate(
     core_height_multiplier: float = Form(default=1.0),
     branch_density_multiplier: float = Form(default=1.0),
     branch_thickness_multiplier: float = Form(default=1.0),
+    shape_family: str = Form(default="coral"),
     upload_file: UploadFile | None = File(default=None),
 ) -> JSONResponse:
     if upload_file and upload_file.filename:
@@ -778,6 +1061,7 @@ async def generate(
         "core_height_multiplier": core_height_multiplier,
         "branch_density_multiplier": branch_density_multiplier,
         "branch_thickness_multiplier": branch_thickness_multiplier,
+        "shape_family": shape_family,
     }
 
     thread = threading.Thread(target=process_job, args=(job_id, request_data), daemon=True)
@@ -815,8 +1099,6 @@ async def serve_output(filename: str):
         media_type = "image/jpeg"
     elif suffix == ".stl":
         media_type = "model/stl"
-    elif suffix == ".glb":
-        media_type = "model/gltf-binary"
     elif suffix == ".zip":
         media_type = "application/zip"
     elif suffix == ".scad":
