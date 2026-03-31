@@ -6,8 +6,10 @@ import random
 import sys
 from pathlib import Path
 
-import bpy
-
+try:
+    import bpy
+except ImportError:
+    bpy = None
 
 def parse_args():
     argv = sys.argv
@@ -168,7 +170,6 @@ def add_bezier_curve(points, bevel_depth=0.12, resolution=16, name="Curve"):
     bpy.context.collection.objects.link(obj)
     return obj
 
-
 def create_material(name: str, base_color):
     mat = bpy.data.materials.get(name)
     if mat is not None:
@@ -298,87 +299,6 @@ def finalize_mesh(obj, remesh_voxel=0.12, decimate_ratio=None):
     shade_smooth(obj)
     return obj
 
-
-def create_starfish(params):
-    scale = params["size_factor"]
-    arm_length = 2.8 * scale
-    arm_radius = 0.68 * scale
-
-    objects = []
-    center = add_uv_sphere(radius=0.95 * scale, scale=(1.0, 1.0, 0.42), location=(0, 0, 0), name="StarCenter")
-    objects.append(center)
-
-    for i in range(5):
-        angle = i * (2 * math.pi / 5.0)
-        x = math.cos(angle) * arm_length * 0.65
-        y = math.sin(angle) * arm_length * 0.65
-        arm = add_cylinder(
-            location=(x, y, 0),
-            radius=arm_radius,
-            depth=arm_length * 1.25,
-            rotation=(math.radians(90), 0, angle),
-            name=f"StarArm_{i}",
-        )
-        arm.scale = (1.0, 0.52, 0.85)
-        objects.append(arm)
-
-        tip = add_uv_sphere(
-            radius=0.48 * scale,
-            scale=(1.0, 0.75, 0.55),
-            location=(math.cos(angle) * arm_length * 1.30, math.sin(angle) * arm_length * 1.30, 0),
-            name=f"StarTip_{i}",
-        )
-        objects.append(tip)
-
-    star = join_objects(objects, name="Starfish")
-    finalize_mesh(star, remesh_voxel=0.10 * scale, decimate_ratio=0.96)
-    return star, (0, 0, 0.5 * scale), 1.2 * scale
-
-
-def create_seaweed(params):
-    scale = params["size_factor"]
-    density = params["density_factor"]
-    base_radius = 1.15 * scale
-    blade_count = max(4, min(8, int(round(4 + density * 2.5))))
-
-    objects = []
-
-    base = add_cylinder(location=(0, 0, 0.25 * scale), radius=base_radius, depth=0.5 * scale, name="SeaweedBase")
-    base.scale = (1.0, 1.0, 0.55)
-    objects.append(base)
-
-    for i in range(blade_count):
-        angle = i * (2 * math.pi / blade_count)
-        bend = 0.7 + 0.12 * i
-        x0 = math.cos(angle) * base_radius * 0.25
-        y0 = math.sin(angle) * base_radius * 0.25
-
-        points = []
-        for j in range(7):
-            t = j / 6.0
-            x = x0 + math.sin(t * math.pi * 1.2 + i * 0.5) * 0.55 * bend * scale
-            y = y0 + math.cos(t * math.pi * 0.9 + i * 0.3) * 0.18 * bend * scale
-            z = 0.2 * scale + t * (4.8 + i * 0.15) * scale
-            points.append((x, y, z))
-
-        curve = add_bezier_curve(
-            points,
-            bevel_depth=max(0.10 * scale, 0.08),
-            resolution=18,
-            name=f"SeaweedBlade_{i}",
-        )
-        objects.append(curve)
-
-    select_objects(objects)
-    for obj in objects:
-        bpy.context.view_layer.objects.active = obj
-        convert_to_mesh(obj)
-
-    seaweed = join_objects(objects, name="Seaweed")
-    finalize_mesh(seaweed, remesh_voxel=0.085 * scale, decimate_ratio=0.97)
-    return seaweed, (0, 0, 2.2 * scale), 1.15 * scale
-
-
 def create_coral(params):
     scale = params["size_factor"]
     density = params["density_factor"]
@@ -447,72 +367,132 @@ def create_coral(params):
 def create_clownfish(params):
     scale = params["size_factor"]
 
-    body = add_uv_sphere(radius=1.35 * scale, scale=(2.2, 1.2, 1.0), location=(0, 0, 0), name="FishBody")
-    head = add_uv_sphere(radius=0.95 * scale, scale=(1.05, 1.0, 0.95), location=(-2.2 * scale, 0, 0), name="FishHead")
-    tail_core = add_uv_sphere(radius=0.70 * scale, scale=(0.65, 0.75, 0.75), location=(2.35 * scale, 0, 0), name="FishTailCore")
+    body_main = add_uv_sphere(
+        radius=1.30 * scale,
+        scale=(2.15, 1.05, 0.82),
+        location=(0.10 * scale, 0, 0),
+        name="FishBodyMain",
+    )
+    body_front = add_uv_sphere(
+        radius=0.95 * scale,
+        scale=(1.10, 0.95, 0.82),
+        location=(-2.05 * scale, 0, 0),
+        name="FishBodyFront",
+    )
+    cheek = add_uv_sphere(
+        radius=0.70 * scale,
+        scale=(0.90, 0.90, 0.74),
+        location=(-2.75 * scale, 0, -0.05 * scale),
+        name="FishCheek",
+    )
+    tail_root = add_uv_sphere(
+        radius=0.62 * scale,
+        scale=(0.75, 0.72, 0.72),
+        location=(2.55 * scale, 0, 0),
+        name="FishTailRoot",
+    )
 
     tail_top = add_cone(
-        location=(3.35 * scale, 0, 0.85 * scale),
-        radius1=0.72 * scale,
+        location=(3.65 * scale, 0, 0.72 * scale),
+        radius1=0.82 * scale,
         radius2=0.08 * scale,
-        depth=1.8 * scale,
+        depth=2.05 * scale,
         rotation=(0, math.radians(90), 0),
         name="FishTailTop",
     )
     tail_bottom = add_cone(
-        location=(3.35 * scale, 0, -0.85 * scale),
-        radius1=0.72 * scale,
+        location=(3.65 * scale, 0, -0.72 * scale),
+        radius1=0.82 * scale,
         radius2=0.08 * scale,
-        depth=1.8 * scale,
+        depth=2.05 * scale,
         rotation=(0, math.radians(90), 0),
         name="FishTailBottom",
     )
 
-    dorsal = add_cone(
-        location=(0.2 * scale, 0, 1.35 * scale),
-        radius1=0.85 * scale,
-        radius2=0.1 * scale,
-        depth=1.6 * scale,
+    dorsal_front = add_cone(
+        location=(-0.45 * scale, 0, 1.18 * scale),
+        radius1=0.72 * scale,
+        radius2=0.10 * scale,
+        depth=1.25 * scale,
         rotation=(math.radians(90), 0, 0),
-        name="FishDorsal",
+        name="FishDorsalFront",
+    )
+    dorsal_back = add_cone(
+        location=(0.95 * scale, 0, 1.02 * scale),
+        radius1=0.52 * scale,
+        radius2=0.08 * scale,
+        depth=1.00 * scale,
+        rotation=(math.radians(90), 0, 0),
+        name="FishDorsalBack",
     )
 
     ventral = add_cone(
-        location=(0.0 * scale, 0, -1.15 * scale),
-        radius1=0.55 * scale,
+        location=(-0.10 * scale, 0, -0.98 * scale),
+        radius1=0.46 * scale,
         radius2=0.08 * scale,
-        depth=1.1 * scale,
+        depth=0.95 * scale,
         rotation=(math.radians(-90), 0, 0),
         name="FishVentral",
     )
 
-    pectoral = add_cone(
-        location=(-0.9 * scale, 0.95 * scale, -0.1 * scale),
-        radius1=0.45 * scale,
+    pectoral_left = add_cone(
+        location=(-1.15 * scale, 0.72 * scale, -0.05 * scale),
+        radius1=0.34 * scale,
         radius2=0.06 * scale,
-        depth=0.95 * scale,
-        rotation=(0, math.radians(75), math.radians(18)),
-        name="FishPectoral",
+        depth=0.82 * scale,
+        rotation=(0, math.radians(68), math.radians(18)),
+        name="FishPectoralLeft",
+    )
+    pectoral_right = add_cone(
+        location=(-1.15 * scale, -0.72 * scale, -0.05 * scale),
+        radius1=0.34 * scale,
+        radius2=0.06 * scale,
+        depth=0.82 * scale,
+        rotation=(0, math.radians(-68), math.radians(-18)),
+        name="FishPectoralRight",
     )
 
-    objects = [body, head, tail_core, tail_top, tail_bottom, dorsal, ventral, pectoral]
+    objects = [
+        body_main,
+        body_front,
+        cheek,
+        tail_root,
+        tail_top,
+        tail_bottom,
+        dorsal_front,
+        dorsal_back,
+        ventral,
+        pectoral_left,
+        pectoral_right,
+    ]
+
     fish = join_objects(objects, name="Clownfish")
+    finalize_mesh(fish, remesh_voxel=max(0.07 * scale, 0.05), decimate_ratio=0.98)
 
-    # More conservative finalization to reduce artifacts
-    finalize_mesh(fish, remesh_voxel=max(0.08 * scale, 0.06), decimate_ratio=None)
+    for xpos, width, tilt in (
+        (-1.55 * scale, 0.12 * scale, 9),
+        (-0.25 * scale, 0.14 * scale, 3),
+        (1.10 * scale, 0.12 * scale, -6),
+    ):
+        bpy.ops.mesh.primitive_cube_add(location=(xpos, 0, 0))
+        cutter = bpy.context.active_object
+        cutter.scale = (width, 2.10 * scale, 1.35 * scale)
+        cutter.rotation_euler[1] = math.radians(tilt)
 
-    # Stripe grooves disabled for now to reduce STL artifacts
+        mod = fish.modifiers.new(name=f"StripeCut_{xpos}", type="BOOLEAN")
+        mod.operation = "DIFFERENCE"
+        mod.solver = "FAST"
+        mod.object = cutter
+        apply_modifier(fish, mod.name)
+
+        bpy.data.objects.remove(cutter, do_unlink=True)
+
     shade_smooth(fish)
-    return fish, (0, 0, 0.3 * scale), 1.45 * scale
+    return fish, (0, 0, 0.15 * scale), 1.40 * scale
 
 
 def create_shape(params):
     shape = params["shape_family"]
-
-    if shape == "starfish":
-        return create_starfish(params)
-    if shape == "seaweed":
-        return create_seaweed(params)
     if shape == "clownfish":
         return create_clownfish(params)
     return create_coral(params)
@@ -530,8 +510,6 @@ def main():
 
     material_color = {
         "coral": (0.93, 0.67, 0.58, 1.0),
-        "starfish": (0.94, 0.74, 0.52, 1.0),
-        "seaweed": (0.52, 0.76, 0.50, 1.0),
         "clownfish": (0.95, 0.56, 0.32, 1.0),
     }.get(params["shape_family"], (0.85, 0.85, 0.85, 1.0))
 

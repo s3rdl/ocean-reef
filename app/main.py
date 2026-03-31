@@ -26,8 +26,10 @@ APP_DIR = BASE_DIR / "app"
 DATA_DIR = BASE_DIR / "data"
 GENERATED_DIR = BASE_DIR / "generated"
 OUTPUT_DIR = BASE_DIR / "output"
+BLENDER_DIR = APP_DIR / "blender"
+BLENDER_SCRIPT_PATH = BLENDER_DIR / "generate.py"
 
-for directory in (DATA_DIR, GENERATED_DIR, OUTPUT_DIR):
+for directory in (DATA_DIR, GENERATED_DIR, OUTPUT_DIR, BLENDER_DIR):
     directory.mkdir(parents=True, exist_ok=True)
 
 (APP_DIR / "static").mkdir(parents=True, exist_ok=True)
@@ -75,116 +77,59 @@ PRESETS = {
 }
 
 SHAPE_FAMILIES = {
-    "coral": "Coral",
+    "coral": "Coral (experimental / slow)",
     "starfish": "Starfish",
     "seaweed": "Seaweed",
     "clownfish": "Clownfish",
 }
 
-SCAD_CORAL = r"""
-$fn = 72;
-
-// {{TITLE}}
-
-base_radius = {{BASE_RADIUS}};
-core_height = {{CORE_HEIGHT}};
-branch_scale = {{BRANCH_SCALE}};
-branch_count = {{BRANCH_COUNT}};
-
-module sphere_link(x0, y0, z0, r0, x1, y1, z1, r1) {
-    hull() {
-        translate([x0, y0, z0]) sphere(r=r0);
-        translate([x1, y1, z1]) sphere(r=r1);
-    }
-}
-
-module coral_arm(seed_angle=0, arm_bend=1.0, arm_twist=0) {
-    union() {
-        for (i = [0:7]) {
-            z0 = i * core_height / 8;
-            z1 = (i + 1) * core_height / 8;
-
-            x0 = sin(seed_angle + i * (8 + arm_twist)) * (2 + i * 2.8) * arm_bend;
-            x1 = sin(seed_angle + (i + 1) * (8 + arm_twist)) * (2 + (i + 1) * 2.8) * arm_bend;
-
-            y0 = cos(seed_angle + i * (6 + arm_twist * 0.5)) * (1.4 + i * 1.6);
-            y1 = cos(seed_angle + (i + 1) * (6 + arm_twist * 0.5)) * (1.4 + (i + 1) * 1.6);
-
-            r0 = max((6.2 - i * 0.55) * branch_scale, 1.8 * branch_scale);
-            r1 = max((6.2 - (i + 1) * 0.55) * branch_scale, 1.4 * branch_scale);
-
-            sphere_link(x0, y0, z0, r0, x1, y1, z1, r1);
-
-            if (i >= 3 && i <= 5) {
-                bx0 = x1;
-                by0 = y1;
-                bz0 = z1;
-
-                bx1 = x1 + sin(seed_angle + 90 + i * 16) * 10 * arm_bend;
-                by1 = y1 + cos(seed_angle + 90 + i * 13) * 7 * arm_bend;
-                bz1 = z1 + 10 + i * 1.2;
-
-                br0 = r1 * 0.72;
-                br1 = max(r1 * 0.42, 1.1 * branch_scale);
-
-                sphere_link(bx0, by0, bz0, br0, bx1, by1, bz1, br1);
-            }
-        }
-    }
-}
-
-module coral_base() {
-    hull() {
-        cylinder(h=8, r=base_radius);
-        translate([0, 0, 4]) cylinder(h=5, r=base_radius * 0.82);
-    }
-}
-
-union() {
-    coral_base();
-
-    for (i = [0:branch_count - 1]) {
-        angle = i * 360 / branch_count;
-        rotate([0, 0, angle])
-            translate([base_radius * 0.18, 0, 4])
-                coral_arm(
-                    seed_angle=angle * 0.55,
-                    arm_bend=0.90 + (i % 3) * 0.10,
-                    arm_twist=(i % 4) * 2
-                );
-    }
-}
-"""
-
 SCAD_STARFISH = r"""
-$fn = 72;
+$fn = 96;
 
 // {{TITLE}}
 
 size_factor = {{SIZE_FACTOR}};
-thickness = 8 * size_factor;
-arm_length = 34 * size_factor;
-arm_width = 11 * size_factor;
 
-module arm() {
+core_r = 8.8 * size_factor;
+body_h = 6.8 * size_factor;
+
+arm_len = 36 * size_factor;
+
+root_r = 5.4 * size_factor;
+mid_r1 = 4.3 * size_factor;
+mid_r2 = 3.1 * size_factor;
+tip_r = 1.6 * size_factor;
+
+module rounded_arm() {
     hull() {
-        translate([0, 0, 0]) cylinder(h=thickness, r=arm_width);
-        translate([arm_length * 0.55, 0, 0]) cylinder(h=thickness * 0.90, r=arm_width * 0.62);
-        translate([arm_length, 0, 0]) cylinder(h=thickness * 0.72, r=arm_width * 0.24);
+        translate([0, 0, 0])
+            scale([1.08, 0.84, 0.40]) sphere(r=root_r);
+
+        translate([arm_len * 0.30, 0.3 * size_factor, 0.10 * size_factor])
+            scale([0.96, 0.68, 0.34]) sphere(r=mid_r1);
+
+        translate([arm_len * 0.62, -0.2 * size_factor, 0.20 * size_factor])
+            scale([0.86, 0.54, 0.28]) sphere(r=mid_r2);
+
+        translate([arm_len * 0.92, 0.1 * size_factor, 0.08 * size_factor])
+            scale([0.70, 0.34, 0.22]) sphere(r=tip_r);
     }
 }
 
 module center_body() {
     hull() {
-        cylinder(h=thickness, r=arm_width * 1.05);
-        translate([0, 0, thickness * 0.20]) cylinder(h=thickness * 0.65, r=arm_width * 0.92);
+        scale([1.00, 1.00, 0.34]) sphere(r=core_r);
+        translate([0, 0, body_h * 0.12])
+            scale([0.78, 0.78, 0.20]) sphere(r=core_r * 0.92);
     }
 }
 
 union() {
     center_body();
+
     for (i = [0:4]) {
-        rotate([0, 0, i * 72]) arm();
+        rotate([0, 0, i * 72])
+            rounded_arm();
     }
 }
 """
@@ -244,90 +189,539 @@ union() {
 }
 """
 
-SCAD_CLOWNFISH = r"""
-$fn = 96;
+BLENDER_GENERATE_SCRIPT = r'''
+import argparse
+import json
+import math
+import random
+import sys
+from pathlib import Path
 
-// {{TITLE}}
+import bpy
 
-size_factor = {{SIZE_FACTOR}};
-body_h = 19 * size_factor;
-body_w = 14 * size_factor;
-body_len = 74 * size_factor;
-tail_len = 18 * size_factor;
-stripe_depth = 2.2 * size_factor;
 
-module body_core() {
-    hull() {
-        translate([-body_len * 0.42, 0, 0]) scale([1.00, 0.88, 0.72]) sphere(r=body_h);
-        translate([-body_len * 0.15, 0, 0]) scale([1.28, 0.98, 0.84]) sphere(r=body_h);
-        translate([body_len * 0.12, 0, 0]) scale([1.08, 0.94, 0.78]) sphere(r=body_h * 0.96);
-        translate([body_len * 0.34, 0, 0]) scale([0.70, 0.76, 0.58]) sphere(r=body_h * 0.90);
-    }
-}
+def parse_args():
+    argv = sys.argv
+    if "--" in argv:
+        argv = argv[argv.index("--") + 1 :]
+    else:
+        argv = []
 
-module tail_fin() {
-    hull() {
-        translate([body_len * 0.48, 0, 0]) scale([0.26, 0.45, 0.42]) sphere(r=body_h);
-        translate([body_len * 0.48 + tail_len, 0, body_h * 0.78]) sphere(r=body_w * 0.70);
-        translate([body_len * 0.48 + tail_len, 0, -body_h * 0.78]) sphere(r=body_w * 0.70);
-    }
-}
+    parser = argparse.ArgumentParser()
+    parser.add_argument("--params", required=True)
+    parser.add_argument("--stl", required=False, default="")
+    parser.add_argument("--png", required=False, default="")
+    return parser.parse_args(argv)
 
-module dorsal_fin() {
-    hull() {
-        translate([-10 * size_factor, 0, body_h * 0.70]) sphere(r=body_w * 0.48);
-        translate([2 * size_factor, 0, body_h * 1.15]) sphere(r=body_w * 0.34);
-        translate([18 * size_factor, 0, body_h * 0.82]) sphere(r=body_w * 0.22);
-    }
-}
 
-module ventral_fin() {
-    hull() {
-        translate([-2 * size_factor, 0, -body_h * 0.54]) sphere(r=body_w * 0.30);
-        translate([12 * size_factor, 0, -body_h * 0.84]) sphere(r=body_w * 0.20);
-        translate([20 * size_factor, 0, -body_h * 0.58]) sphere(r=body_w * 0.16);
-    }
-}
+def load_params(path_str: str) -> dict:
+    path = Path(path_str)
+    with path.open("r", encoding="utf-8") as f:
+        return json.load(f)
 
-module pectoral_fin() {
-    hull() {
-        translate([-12 * size_factor, body_w * 0.60, 1 * size_factor]) sphere(r=body_w * 0.28);
-        translate([-2 * size_factor, body_w * 1.05, 3 * size_factor]) sphere(r=body_w * 0.16);
-        translate([8 * size_factor, body_w * 0.72, 0]) sphere(r=body_w * 0.12);
-    }
-}
 
-module clownfish_raw() {
-    union() {
-        body_core();
-        tail_fin();
-        dorsal_fin();
-        ventral_fin();
-        pectoral_fin();
-    }
-}
+def unpack_params(payload: dict) -> dict:
+    params = dict(payload.get("shape_params", {}))
+    params["shape_family"] = payload.get("shape_family", "coral")
+    params["title"] = payload.get("title", "Ocean Reef Prototype")
+    params["dataset_name"] = payload.get("dataset_name", "")
+    params["summary"] = payload.get("summary", {})
+    return params
 
-module stripe_cut(xpos, width, tilt=0) {
-    translate([xpos, 0, 0])
-        rotate([0, tilt, 0])
-            cube([width, body_w * 3.2, body_h * 3.0], center=true);
-}
 
-difference() {
-    clownfish_raw();
+def reset_scene():
+    bpy.ops.object.select_all(action="SELECT")
+    bpy.ops.object.delete(use_global=False)
 
-    translate([-body_len * 0.28, body_w * 0.28, body_h * 0.18])
-        sphere(r=body_w * 0.11);
+    for collection in (
+        bpy.data.meshes,
+        bpy.data.curves,
+        bpy.data.materials,
+        bpy.data.cameras,
+        bpy.data.lights,
+        bpy.data.metaballs,
+        bpy.data.images,
+    ):
+        for block in list(collection):
+            if block.users == 0:
+                collection.remove(block)
 
-    stripe_cut(-body_len * 0.18, stripe_depth, 8);
-    stripe_cut(0, stripe_depth * 1.25, 2);
-    stripe_cut(body_len * 0.22, stripe_depth, -5);
-}
-"""
+
+def set_scene_defaults():
+    scene = bpy.context.scene
+    scene.render.engine = "BLENDER_EEVEE"
+    scene.eevee.taa_render_samples = 32
+    scene.render.image_settings.file_format = "PNG"
+    scene.render.resolution_x = 1400
+    scene.render.resolution_y = 1000
+    scene.render.film_transparent = False
+
+    world = bpy.data.worlds.get("World")
+    if world is None:
+        world = bpy.data.worlds.new("World")
+    scene.world = world
+    world.use_nodes = True
+
+    bg = world.node_tree.nodes.get("Background")
+    if bg:
+        bg.inputs[0].default_value = (0.97, 0.98, 1.0, 1.0)
+        bg.inputs[1].default_value = 0.9
+
+
+def ensure_stl_export():
+    try:
+        bpy.ops.preferences.addon_enable(module="io_mesh_stl")
+    except Exception:
+        pass
+
+
+def deselect_all():
+    bpy.ops.object.select_all(action="DESELECT")
+
+
+def select_objects(objects):
+    deselect_all()
+    for obj in objects:
+        obj.select_set(True)
+    if objects:
+        bpy.context.view_layer.objects.active = objects[0]
+
+
+def join_objects(objects, name="JoinedObject"):
+    if not objects:
+        raise RuntimeError("No objects to join.")
+    select_objects(objects)
+    bpy.ops.object.join()
+    obj = bpy.context.view_layer.objects.active
+    obj.name = name
+    return obj
+
+
+def apply_modifier(obj, modifier_name):
+    bpy.context.view_layer.objects.active = obj
+    try:
+        bpy.ops.object.modifier_apply(modifier=modifier_name)
+    except Exception:
+        pass
+
+
+def convert_to_mesh(obj):
+    bpy.context.view_layer.objects.active = obj
+    try:
+        bpy.ops.object.convert(target="MESH")
+    except Exception:
+        pass
+    return bpy.context.view_layer.objects.active
+
+
+def add_uv_sphere(location=(0, 0, 0), radius=1.0, scale=(1, 1, 1), name="Sphere"):
+    bpy.ops.mesh.primitive_uv_sphere_add(radius=radius, location=location)
+    obj = bpy.context.active_object
+    obj.scale = scale
+    obj.name = name
+    return obj
+
+
+def add_cylinder(location=(0, 0, 0), radius=1.0, depth=2.0, rotation=(0, 0, 0), name="Cylinder"):
+    bpy.ops.mesh.primitive_cylinder_add(radius=radius, depth=depth, location=location, rotation=rotation)
+    obj = bpy.context.active_object
+    obj.name = name
+    return obj
+
+
+def add_cone(location=(0, 0, 0), radius1=1.0, radius2=0.0, depth=2.0, rotation=(0, 0, 0), name="Cone"):
+    bpy.ops.mesh.primitive_cone_add(
+        radius1=radius1,
+        radius2=radius2,
+        depth=depth,
+        location=location,
+        rotation=rotation,
+    )
+    obj = bpy.context.active_object
+    obj.name = name
+    return obj
+
+
+def add_bezier_curve(points, bevel_depth=0.12, resolution=16, name="Curve"):
+    curve_data = bpy.data.curves.new(name=name, type="CURVE")
+    curve_data.dimensions = "3D"
+    curve_data.resolution_u = resolution
+    curve_data.bevel_depth = bevel_depth
+    curve_data.bevel_resolution = 6
+    curve_data.fill_mode = "FULL"
+
+    spline = curve_data.splines.new("POLY")
+    spline.points.add(len(points) - 1)
+    for idx, (x, y, z) in enumerate(points):
+        spline.points[idx].co = (x, y, z, 1.0)
+
+    obj = bpy.data.objects.new(name, curve_data)
+    bpy.context.collection.objects.link(obj)
+    return obj
+
+def create_material(name: str, base_color):
+    mat = bpy.data.materials.get(name)
+    if mat is not None:
+        return mat
+
+    mat = bpy.data.materials.new(name=name)
+    mat.use_nodes = True
+
+    bsdf = mat.node_tree.nodes.get("Principled BSDF")
+    if bsdf:
+        bsdf.inputs["Base Color"].default_value = base_color
+        bsdf.inputs["Roughness"].default_value = 0.55
+        bsdf.inputs["Specular"].default_value = 0.35
+
+    return mat
+
+
+def assign_material(obj, material):
+    if obj.data and hasattr(obj.data, "materials"):
+        obj.data.materials.clear()
+        obj.data.materials.append(material)
+
+
+def add_remesh(obj, voxel_size=0.18, smooth=True):
+    mod = obj.modifiers.new(name="Remesh", type="REMESH")
+    mod.mode = "VOXEL"
+    mod.voxel_size = voxel_size
+    mod.use_smooth_shade = smooth
+    apply_modifier(obj, mod.name)
+
+
+def add_decimate(obj, ratio=0.92):
+    mod = obj.modifiers.new(name="Decimate", type="DECIMATE")
+    mod.ratio = ratio
+    apply_modifier(obj, mod.name)
+
+
+def shade_smooth(obj):
+    try:
+        bpy.context.view_layer.objects.active = obj
+        bpy.ops.object.shade_smooth()
+    except Exception:
+        pass
+
+
+def look_at(obj, target=(0, 0, 0)):
+    loc = obj.location
+    dx = target[0] - loc.x
+    dy = target[1] - loc.y
+    dz = target[2] - loc.z
+    distance_xy = max(math.sqrt(dx * dx + dy * dy), 1e-6)
+    obj.rotation_euler[0] = math.atan2(dz, distance_xy)
+    obj.rotation_euler[1] = 0.0
+    obj.rotation_euler[2] = math.atan2(dx, dy) * -1.0
+
+
+def setup_camera_and_light(target=(0, 0, 2.0), scale_hint=1.0):
+    cam_distance = 12.0 * scale_hint
+
+    bpy.ops.object.camera_add(location=(cam_distance, -cam_distance * 1.2, cam_distance * 0.68))
+    cam = bpy.context.active_object
+    bpy.context.scene.camera = cam
+    look_at(cam, target)
+
+    bpy.ops.object.light_add(type="SUN", location=(cam_distance * 0.8, -cam_distance * 0.4, cam_distance * 1.5))
+    sun = bpy.context.active_object
+    sun.data.energy = 3.0
+    sun.rotation_euler = (math.radians(35), math.radians(0), math.radians(25))
+
+    bpy.ops.object.light_add(type="AREA", location=(-cam_distance * 0.5, -cam_distance * 0.2, cam_distance * 0.7))
+    area = bpy.context.active_object
+    area.data.energy = 2500
+    area.data.shape = "RECTANGLE"
+    area.data.size = 8.0 * scale_hint
+    area.data.size_y = 8.0 * scale_hint
+    look_at(area, target)
+
+
+def export_png(png_path: str):
+    if not png_path:
+        return
+    bpy.context.scene.render.filepath = png_path
+    bpy.ops.render.render(write_still=True)
+
+
+def export_stl(obj, stl_path: str):
+    if not stl_path:
+        return
+
+    ensure_stl_export()
+
+    bpy.context.view_layer.objects.active = obj
+    deselect_all()
+    obj.select_set(True)
+
+    convert_to_mesh(obj)
+
+    try:
+        bpy.ops.object.transform_apply(location=False, rotation=True, scale=True)
+    except Exception:
+        pass
+
+    export_error = None
+
+    try:
+        bpy.ops.export_mesh.stl(filepath=stl_path, use_selection=True)
+    except Exception as exc:
+        export_error = exc
+
+    if not Path(stl_path).exists() or Path(stl_path).stat().st_size == 0:
+        try:
+            bpy.ops.wm.stl_export(filepath=stl_path, export_selected_objects=True)
+            export_error = None
+        except Exception as exc:
+            if export_error is None:
+                export_error = exc
+
+    if not Path(stl_path).exists() or Path(stl_path).stat().st_size == 0:
+        raise RuntimeError(f"STL export failed: {export_error}")
+
+
+def finalize_mesh(obj, remesh_voxel=0.12, decimate_ratio=None):
+    convert_to_mesh(obj)
+    add_remesh(obj, voxel_size=remesh_voxel)
+    if decimate_ratio is not None:
+        add_decimate(obj, ratio=decimate_ratio)
+    shade_smooth(obj)
+    return obj
+
+def create_coral(params):
+    scale = params["size_factor"]
+    density = params["density_factor"]
+    thickness = params["thickness_factor"]
+
+    objects = []
+
+    base = add_cylinder(location=(0, 0, 0.25 * scale), radius=1.35 * scale, depth=0.55 * scale, name="CoralBase")
+    base.scale = (1.0, 1.0, 0.65)
+    objects.append(base)
+
+    branch_count = max(8, min(16, int(round(8 + density * 6))))
+    rng = random.Random(params["seed"])
+
+    for i in range(branch_count):
+        angle = i * (2 * math.pi / branch_count)
+        outward = 0.18 * scale + (i % 3) * 0.12 * scale
+        x0 = math.cos(angle) * outward
+        y0 = math.sin(angle) * outward
+
+        points = [(x0, y0, 0.25 * scale)]
+        branch_height = (3.0 + rng.random() * 2.2) * scale
+
+        for j in range(1, 5):
+            t = j / 4.0
+            x = x0 + math.sin(angle * 0.7 + t * 1.5 + rng.random()) * (0.35 + 0.80 * t) * scale
+            y = y0 + math.cos(angle * 0.9 + t * 1.2 + rng.random()) * (0.25 + 0.70 * t) * scale
+            z = 0.25 * scale + branch_height * t
+            points.append((x, y, z))
+
+        curve = add_bezier_curve(
+            points,
+            bevel_depth=max(0.11 * thickness * scale, 0.075),
+            resolution=14,
+            name=f"CoralBranch_{i}",
+        )
+        objects.append(curve)
+
+        if i % 2 == 0:
+            bx, by, bz = points[-2]
+            tip = add_bezier_curve(
+                [
+                    (bx, by, bz),
+                    (
+                        bx + math.sin(angle + 1.3) * 0.75 * scale,
+                        by + math.cos(angle + 1.1) * 0.55 * scale,
+                        bz + 1.0 * scale,
+                    ),
+                ],
+                bevel_depth=max(0.07 * thickness * scale, 0.045),
+                resolution=10,
+                name=f"CoralTip_{i}",
+            )
+            objects.append(tip)
+
+    select_objects(objects)
+    for obj in objects:
+        bpy.context.view_layer.objects.active = obj
+        convert_to_mesh(obj)
+
+    coral = join_objects(objects, name="Coral")
+    finalize_mesh(coral, remesh_voxel=max(0.10 * scale, 0.07), decimate_ratio=0.95)
+    return coral, (0, 0, 2.2 * scale), 1.25 * scale
+
+
+def create_clownfish(params):
+    scale = params["size_factor"]
+
+    body_main = add_uv_sphere(
+        radius=1.30 * scale,
+        scale=(2.15, 1.05, 0.82),
+        location=(0.10 * scale, 0, 0),
+        name="FishBodyMain",
+    )
+    body_front = add_uv_sphere(
+        radius=0.95 * scale,
+        scale=(1.10, 0.95, 0.82),
+        location=(-2.05 * scale, 0, 0),
+        name="FishBodyFront",
+    )
+    cheek = add_uv_sphere(
+        radius=0.70 * scale,
+        scale=(0.90, 0.90, 0.74),
+        location=(-2.75 * scale, 0, -0.05 * scale),
+        name="FishCheek",
+    )
+    tail_root = add_uv_sphere(
+        radius=0.62 * scale,
+        scale=(0.75, 0.72, 0.72),
+        location=(2.55 * scale, 0, 0),
+        name="FishTailRoot",
+    )
+
+    tail_top = add_cone(
+        location=(3.65 * scale, 0, 0.72 * scale),
+        radius1=0.82 * scale,
+        radius2=0.08 * scale,
+        depth=2.05 * scale,
+        rotation=(0, math.radians(90), 0),
+        name="FishTailTop",
+    )
+    tail_bottom = add_cone(
+        location=(3.65 * scale, 0, -0.72 * scale),
+        radius1=0.82 * scale,
+        radius2=0.08 * scale,
+        depth=2.05 * scale,
+        rotation=(0, math.radians(90), 0),
+        name="FishTailBottom",
+    )
+
+    dorsal_front = add_cone(
+        location=(-0.45 * scale, 0, 1.18 * scale),
+        radius1=0.72 * scale,
+        radius2=0.10 * scale,
+        depth=1.25 * scale,
+        rotation=(math.radians(90), 0, 0),
+        name="FishDorsalFront",
+    )
+    dorsal_back = add_cone(
+        location=(0.95 * scale, 0, 1.02 * scale),
+        radius1=0.52 * scale,
+        radius2=0.08 * scale,
+        depth=1.00 * scale,
+        rotation=(math.radians(90), 0, 0),
+        name="FishDorsalBack",
+    )
+
+    ventral = add_cone(
+        location=(-0.10 * scale, 0, -0.98 * scale),
+        radius1=0.46 * scale,
+        radius2=0.08 * scale,
+        depth=0.95 * scale,
+        rotation=(math.radians(-90), 0, 0),
+        name="FishVentral",
+    )
+
+    pectoral_left = add_cone(
+        location=(-1.15 * scale, 0.72 * scale, -0.05 * scale),
+        radius1=0.34 * scale,
+        radius2=0.06 * scale,
+        depth=0.82 * scale,
+        rotation=(0, math.radians(68), math.radians(18)),
+        name="FishPectoralLeft",
+    )
+    pectoral_right = add_cone(
+        location=(-1.15 * scale, -0.72 * scale, -0.05 * scale),
+        radius1=0.34 * scale,
+        radius2=0.06 * scale,
+        depth=0.82 * scale,
+        rotation=(0, math.radians(-68), math.radians(-18)),
+        name="FishPectoralRight",
+    )
+
+    objects = [
+        body_main,
+        body_front,
+        cheek,
+        tail_root,
+        tail_top,
+        tail_bottom,
+        dorsal_front,
+        dorsal_back,
+        ventral,
+        pectoral_left,
+        pectoral_right,
+    ]
+
+    fish = join_objects(objects, name="Clownfish")
+    finalize_mesh(fish, remesh_voxel=max(0.07 * scale, 0.05), decimate_ratio=0.98)
+
+    for xpos, width, tilt in (
+        (-1.55 * scale, 0.12 * scale, 9),
+        (-0.25 * scale, 0.14 * scale, 3),
+        (1.10 * scale, 0.12 * scale, -6),
+    ):
+        bpy.ops.mesh.primitive_cube_add(location=(xpos, 0, 0))
+        cutter = bpy.context.active_object
+        cutter.scale = (width, 2.10 * scale, 1.35 * scale)
+        cutter.rotation_euler[1] = math.radians(tilt)
+
+        mod = fish.modifiers.new(name=f"StripeCut_{xpos}", type="BOOLEAN")
+        mod.operation = "DIFFERENCE"
+        mod.solver = "FAST"
+        mod.object = cutter
+        apply_modifier(fish, mod.name)
+
+        bpy.data.objects.remove(cutter, do_unlink=True)
+
+    shade_smooth(fish)
+    return fish, (0, 0, 0.15 * scale), 1.40 * scale
+
+
+def create_shape(params):
+    shape = params["shape_family"]
+    if shape == "clownfish":
+        return create_clownfish(params)
+    return create_coral(params)
+
+
+def main():
+    args = parse_args()
+    payload = load_params(args.params)
+    params = unpack_params(payload)
+
+    reset_scene()
+    set_scene_defaults()
+
+    obj, target, scale_hint = create_shape(params)
+
+    material_color = {
+        "coral": (0.93, 0.67, 0.58, 1.0),
+        "clownfish": (0.95, 0.56, 0.32, 1.0),
+    }.get(params["shape_family"], (0.85, 0.85, 0.85, 1.0))
+
+    mat = create_material("OceanMaterial", material_color)
+    assign_material(obj, mat)
+
+    setup_camera_and_light(target=target, scale_hint=scale_hint)
+
+    export_stl(obj, args.stl)
+    export_png(args.png)
+
+
+if __name__ == "__main__":
+    main()
+'''
 
 
 JOBS: dict[str, dict[str, Any]] = {}
 JOBS_LOCK = threading.Lock()
+
+def ensure_blender_script() -> None:
+    BLENDER_DIR.mkdir(parents=True, exist_ok=True)
+    BLENDER_SCRIPT_PATH.write_text(BLENDER_GENERATE_SCRIPT, encoding="utf-8")
 
 
 def list_demo_files() -> list[str]:
@@ -387,40 +781,18 @@ def scale_total(total: int, source_max: int, out_min: float, out_max: float) -> 
     return out_min + (out_max - out_min) * ratio
 
 
-def build_branch_data(
-    agg: dict[str, Any],
-    source_max: int,
-    base_radius_multiplier: float,
-    core_height_multiplier: float,
-    branch_density_multiplier: float,
-    branch_thickness_multiplier: float,
-) -> dict[str, Any]:
-    total = agg["total"]
-    counts_by_region = agg["counts_by_region"]
-    recent_by_region = agg["recent_by_region"]
-
-    base_radius = scale_total(total, source_max, 22.0, 34.0) * base_radius_multiplier
-    core_height = scale_total(total, source_max, 42.0, 88.0) * core_height_multiplier
-    branch_scale = scale_total(total, source_max, 0.85, 1.35) * branch_thickness_multiplier
-    branch_count = max(10, min(24, math.ceil(10 + total / max(source_max, 1) * 18 * branch_density_multiplier)))
-
+def build_summary(agg: dict[str, Any]) -> dict[str, Any]:
+    rows = []
+    for region in REGION_ORDER:
+        rows.append({
+            "region": region,
+            "count": agg["counts_by_region"].get(region, 0),
+            "recent_24h": agg["recent_by_region"].get(region, 0),
+        })
     return {
-        "base_radius": round(base_radius, 2),
-        "core_height": round(core_height, 2),
-        "branch_scale": round(branch_scale, 3),
-        "branch_count": int(branch_count),
+        "total": agg["total"],
+        "regions": rows,
     }
-
-
-def render_coral_scad(template: str, model_data: dict[str, Any], title: str) -> str:
-    return (
-        template
-        .replace("{{TITLE}}", title)
-        .replace("{{BASE_RADIUS}}", str(model_data["base_radius"]))
-        .replace("{{CORE_HEIGHT}}", str(model_data["core_height"]))
-        .replace("{{BRANCH_SCALE}}", str(model_data["branch_scale"]))
-        .replace("{{BRANCH_COUNT}}", str(model_data["branch_count"]))
-    )
 
 
 def render_simple_scad(template: str, title: str, size_factor: float) -> str:
@@ -430,28 +802,90 @@ def render_simple_scad(template: str, title: str, size_factor: float) -> str:
         .replace("{{SIZE_FACTOR}}", str(round(size_factor, 3)))
     )
 
-
-def build_shape_scad(
-    shape_family: str,
-    title: str,
-    model_data: dict[str, Any],
-    total: int,
+def build_shape_params(
+    agg: dict[str, Any],
     source_max: int,
-) -> str:
-    if shape_family == "coral":
-        return render_coral_scad(SCAD_CORAL, model_data, title=title)
+    base_radius_multiplier: float,
+    core_height_multiplier: float,
+    branch_density_multiplier: float,
+    branch_thickness_multiplier: float,
+    shape_family: str,
+) -> dict[str, Any]:
+    total = agg["total"]
 
-    size_factor = scale_total(total, source_max, 0.85, 1.55)
+    size_factor = scale_total(total, source_max, 0.80, 1.75) * base_radius_multiplier
+    density_factor = scale_total(total, source_max, 0.85, 1.65) * branch_density_multiplier
+    thickness_factor = scale_total(total, source_max, 0.90, 1.35) * branch_thickness_multiplier
+    height_factor = scale_total(total, source_max, 0.85, 1.45) * core_height_multiplier
 
-    if shape_family == "starfish":
-        return render_simple_scad(SCAD_STARFISH, title=title, size_factor=size_factor)
-    if shape_family == "seaweed":
-        return render_simple_scad(SCAD_SEAWEED, title=title, size_factor=size_factor)
-    if shape_family == "clownfish":
-        return render_simple_scad(SCAD_CLOWNFISH, title=title, size_factor=size_factor)
+    return {
+        "shape_family": shape_family,
+        "size_factor": round(size_factor, 3),
+        "density_factor": round(density_factor, 3),
+        "thickness_factor": round(thickness_factor, 3),
+        "height_factor": round(height_factor, 3),
+        "seed": int(total + source_max),
+        "total": int(total),
+    }
 
-    return render_coral_scad(SCAD_CORAL, model_data, title=title)
 
+def update_job(job_id: str, **updates: Any) -> None:
+    with JOBS_LOCK:
+        if job_id in JOBS:
+            JOBS[job_id].update(updates)
+
+
+def create_job_record(job_id: str, payload: dict[str, Any]) -> None:
+    with JOBS_LOCK:
+        JOBS[job_id] = payload
+
+
+def get_job_record(job_id: str) -> dict[str, Any] | None:
+    with JOBS_LOCK:
+        job = JOBS.get(job_id)
+        if job is None:
+            return None
+        return dict(job)
+
+def run_blender(params_path: Path, out_stl: Path | None, out_png: Path | None) -> tuple[bool, str]:
+    ensure_blender_script()
+
+    cmd = [
+        "blender",
+        "-b",
+        "-P",
+        str(BLENDER_SCRIPT_PATH),
+        "--",
+        "--params",
+        str(params_path),
+    ]
+
+    if out_stl is not None:
+        cmd.extend(["--stl", str(out_stl)])
+    if out_png is not None:
+        cmd.extend(["--png", str(out_png)])
+
+    try:
+        completed = subprocess.run(cmd, capture_output=True, text=True, check=False)
+    except FileNotFoundError:
+        return False, "Blender not found in PATH. Install it with: sudo apt install blender -y"
+
+    stderr = (completed.stderr or "").strip()
+    stdout = (completed.stdout or "").strip()
+    combined = "\n".join(part for part in [stderr, stdout] if part)
+
+    if completed.returncode != 0:
+        return False, combined or "Blender export failed."
+
+    if out_stl is not None:
+        if not out_stl.exists() or out_stl.stat().st_size == 0:
+            return False, combined or "Blender finished without creating a usable STL file."
+
+    if out_png is not None:
+        if not out_png.exists() or out_png.stat().st_size == 0:
+            return False, combined or "Blender finished without creating a usable PNG file."
+
+    return True, ""
 
 def run_openscad(scad_path: Path, stl_path: Path) -> tuple[bool, str]:
     cmd = ["openscad", "-o", str(stl_path), str(scad_path)]
@@ -496,39 +930,417 @@ def render_png_from_scad(scad_path: Path, png_path: Path) -> tuple[bool, str]:
 
     return True, ""
 
+def process_openscad_job(job_id: str, request_data: dict[str, Any], agg: dict[str, Any], summary: dict[str, Any]) -> None:
+    shape_family = request_data["shape_family"]
+    demo_file = request_data["demo_file"]
+    export_mode = request_data["export_mode"]
+    source_max = int(request_data["source_max"])
+    total = agg["total"]
 
-def build_summary(agg: dict[str, Any]) -> dict[str, Any]:
-    rows = []
-    for region in REGION_ORDER:
-        rows.append({
-            "region": region,
-            "count": agg["counts_by_region"].get(region, 0),
-            "recent_24h": agg["recent_by_region"].get(region, 0),
-        })
-    return {
-        "total": agg["total"],
-        "regions": rows,
+    title = f"Ocean Reef Prototype - {demo_file} - {shape_family}"
+    main_scad_name = f"reef_{job_id}.scad"
+    main_stl_name = f"reef_{job_id}.stl"
+    main_png_name = f"reef_{job_id}.png"
+
+    main_scad_path = GENERATED_DIR / main_scad_name
+    main_stl_path = OUTPUT_DIR / main_stl_name
+    main_png_path = OUTPUT_DIR / main_png_name
+
+    size_factor = scale_total(total, source_max, 0.85, 1.55)
+
+    if shape_family == "starfish":
+        scad_code = render_simple_scad(SCAD_STARFISH, title=title, size_factor=size_factor)
+    else:
+        scad_code = render_simple_scad(SCAD_SEAWEED, title=title, size_factor=size_factor)
+
+    main_scad_path.write_text(scad_code, encoding="utf-8")
+
+    result: dict[str, Any] = {
+        "job_id": job_id,
+        "dataset_name": demo_file,
+        "summary": summary,
+        "preset": request_data["preset"],
+        "export_mode": export_mode,
+        "shape_family": shape_family,
+        "scad_url": f"/generated/{main_scad_name}",
+        "params_url": None,
+        "stl_url": None,
+        "png_url": None,
+        "zip_url": None,
+        "region_files": [],
+        "params": {
+            "source_max": source_max,
+            "base_radius_multiplier": request_data["base_radius_multiplier"],
+            "core_height_multiplier": request_data["core_height_multiplier"],
+            "branch_density_multiplier": request_data["branch_density_multiplier"],
+            "branch_thickness_multiplier": request_data["branch_thickness_multiplier"],
+        },
     }
 
+    if export_mode == "scad_only":
+        update_job(
+            job_id,
+            message="Rendering PNG preview with OpenSCAD...",
+            progress=70,
+            stage="rendering_png",
+            eta_seconds=None,
+        )
 
-def update_job(job_id: str, **updates: Any) -> None:
-    with JOBS_LOCK:
-        if job_id in JOBS:
-            JOBS[job_id].update(updates)
+        ok, message = render_png_from_scad(main_scad_path, main_png_path)
+        if not ok:
+            update_job(
+                job_id,
+                status="error",
+                message=message,
+                result=result,
+                summary=summary,
+                stage="error",
+                eta_seconds=None,
+            )
+            return
 
+        result["png_url"] = f"/output/{main_png_name}"
 
-def create_job_record(job_id: str, payload: dict[str, Any]) -> None:
-    with JOBS_LOCK:
-        JOBS[job_id] = payload
+        update_job(
+            job_id,
+            status="done",
+            message="Preview generated.",
+            result=result,
+            summary=summary,
+            progress=100,
+            stage="done",
+            eta_seconds=None,
+        )
+        return
 
+    if export_mode == "single_stl":
+        update_job(
+            job_id,
+            message="Rendering STL and PNG with OpenSCAD...",
+            progress=45,
+            stage="rendering_stl",
+            eta_seconds=None,
+        )
 
-def get_job_record(job_id: str) -> dict[str, Any] | None:
-    with JOBS_LOCK:
-        job = JOBS.get(job_id)
-        if job is None:
-            return None
-        return dict(job)
+        ok, message = run_openscad(main_scad_path, main_stl_path)
+        if not ok:
+            update_job(
+                job_id,
+                status="error",
+                message=message,
+                result=result,
+                summary=summary,
+                stage="error",
+                eta_seconds=None,
+            )
+            return
 
+        result["stl_url"] = f"/output/{main_stl_name}"
+
+        ok, message = render_png_from_scad(main_scad_path, main_png_path)
+        if ok:
+            result["png_url"] = f"/output/{main_png_name}"
+        else:
+            result["png_warning"] = message
+
+        update_job(
+            job_id,
+            status="done",
+            message="STL generated.",
+            result=result,
+            summary=summary,
+            progress=100,
+            stage="done",
+            eta_seconds=None,
+        )
+        return
+
+    if export_mode == "separate_regions_zip":
+        update_job(
+            job_id,
+            message="Rendering ZIP bundle with OpenSCAD...",
+            progress=45,
+            stage="rendering_regions",
+            eta_seconds=None,
+        )
+
+        region_files: list[dict[str, str | None]] = []
+        zip_name = f"reef_bundle_{job_id}.zip"
+        zip_path = OUTPUT_DIR / zip_name
+
+        temp_dir = Path(tempfile.mkdtemp(prefix=f"reef_{job_id}_"))
+        try:
+            bundle_scad_path = temp_dir / main_scad_name
+            bundle_stl_path = temp_dir / main_stl_name
+            bundle_png_path = temp_dir / main_png_name
+
+            shutil.copy2(main_scad_path, bundle_scad_path)
+
+            ok, message = run_openscad(main_scad_path, bundle_stl_path)
+            if not ok:
+                update_job(
+                    job_id,
+                    status="error",
+                    message=message,
+                    result=result,
+                    summary=summary,
+                    stage="error",
+                    eta_seconds=None,
+                )
+                return
+
+            ok, _ = render_png_from_scad(main_scad_path, bundle_png_path)
+
+            shutil.copy2(bundle_stl_path, main_stl_path)
+            result["stl_url"] = f"/output/{main_stl_name}"
+
+            if ok:
+                shutil.copy2(bundle_png_path, main_png_path)
+                result["png_url"] = f"/output/{main_png_name}"
+
+            region_files.append({
+                "region": "Main",
+                "scad_url": f"/generated/{main_scad_name}",
+                "stl_url": f"/output/{main_stl_name}",
+                "png_url": result["png_url"],
+            })
+
+            update_job(
+                job_id,
+                message="Packaging ZIP...",
+                progress=95,
+                stage="packaging_zip",
+                eta_seconds=None,
+            )
+
+            with zipfile.ZipFile(zip_path, "w", compression=zipfile.ZIP_DEFLATED) as zf:
+                for file_path in temp_dir.glob("*"):
+                    zf.write(file_path, arcname=file_path.name)
+
+            result["region_files"] = region_files
+            result["zip_url"] = f"/output/{zip_name}"
+
+            update_job(
+                job_id,
+                status="done",
+                message="ZIP bundle generated.",
+                result=result,
+                summary=summary,
+                progress=100,
+                stage="done",
+                eta_seconds=None,
+            )
+            return
+        finally:
+            shutil.rmtree(temp_dir, ignore_errors=True)
+
+def process_blender_job(job_id: str, request_data: dict[str, Any], agg: dict[str, Any], summary: dict[str, Any]) -> None:
+    demo_file = request_data["demo_file"]
+    export_mode = request_data["export_mode"]
+    source_max = int(request_data["source_max"])
+    base_radius_multiplier = float(request_data["base_radius_multiplier"])
+    core_height_multiplier = float(request_data["core_height_multiplier"])
+    branch_density_multiplier = float(request_data["branch_density_multiplier"])
+    branch_thickness_multiplier = float(request_data["branch_thickness_multiplier"])
+    shape_family = request_data["shape_family"]
+
+    shape_params = build_shape_params(
+        agg=agg,
+        source_max=source_max,
+        base_radius_multiplier=base_radius_multiplier,
+        core_height_multiplier=core_height_multiplier,
+        branch_density_multiplier=branch_density_multiplier,
+        branch_thickness_multiplier=branch_thickness_multiplier,
+        shape_family=shape_family,
+    )
+
+    title = f"Ocean Reef Prototype - {demo_file} - {shape_family}"
+    params_name = f"reef_{job_id}_params.json"
+    main_stl_name = f"reef_{job_id}.stl"
+    main_png_name = f"reef_{job_id}.png"
+
+    params_path = GENERATED_DIR / params_name
+    main_stl_path = OUTPUT_DIR / main_stl_name
+    main_png_path = OUTPUT_DIR / main_png_name
+
+    blender_payload = {
+        "title": title,
+        "dataset_name": demo_file,
+        "shape_family": shape_family,
+        "shape_params": shape_params,
+        "summary": summary,
+    }
+    params_path.write_text(json.dumps(blender_payload, indent=2, ensure_ascii=False), encoding="utf-8")
+
+    result: dict[str, Any] = {
+        "job_id": job_id,
+        "dataset_name": demo_file,
+        "summary": summary,
+        "preset": request_data["preset"],
+        "export_mode": export_mode,
+        "shape_family": shape_family,
+        "scad_url": None,
+        "params_url": f"/generated/{params_name}",
+        "stl_url": None,
+        "png_url": None,
+        "zip_url": None,
+        "region_files": [],
+        "params": {
+            "source_max": source_max,
+            "base_radius_multiplier": base_radius_multiplier,
+            "core_height_multiplier": core_height_multiplier,
+            "branch_density_multiplier": branch_density_multiplier,
+            "branch_thickness_multiplier": branch_thickness_multiplier,
+        },
+    }
+
+    if export_mode == "scad_only":
+        update_job(
+            job_id,
+            message="Rendering PNG preview with Blender...",
+            progress=70,
+            stage="rendering_png",
+            eta_seconds=None,
+        )
+
+        ok, message = run_blender(params_path, None, main_png_path)
+        if not ok:
+            update_job(
+                job_id,
+                status="error",
+                message=message,
+                result=result,
+                summary=summary,
+                stage="error",
+                eta_seconds=None,
+            )
+            return
+
+        result["png_url"] = f"/output/{main_png_name}"
+
+        update_job(
+            job_id,
+            status="done",
+            message="Preview generated.",
+            result=result,
+            summary=summary,
+            progress=100,
+            stage="done",
+            eta_seconds=None,
+        )
+        return
+
+    if export_mode == "single_stl":
+        update_job(
+            job_id,
+            message="Rendering STL and PNG with Blender...",
+            progress=45,
+            stage="rendering_stl",
+            eta_seconds=None,
+        )
+
+        ok, message = run_blender(params_path, main_stl_path, main_png_path)
+        if not ok:
+            update_job(
+                job_id,
+                status="error",
+                message=message,
+                result=result,
+                summary=summary,
+                stage="error",
+                eta_seconds=None,
+            )
+            return
+
+        result["stl_url"] = f"/output/{main_stl_name}"
+        result["png_url"] = f"/output/{main_png_name}"
+
+        update_job(
+            job_id,
+            status="done",
+            message="STL generated.",
+            result=result,
+            summary=summary,
+            progress=100,
+            stage="done",
+            eta_seconds=None,
+        )
+        return
+
+    if export_mode == "separate_regions_zip":
+        update_job(
+            job_id,
+            message="Rendering ZIP bundle with Blender...",
+            progress=45,
+            stage="rendering_regions",
+            eta_seconds=None,
+        )
+
+        region_files: list[dict[str, str | None]] = []
+        zip_name = f"reef_bundle_{job_id}.zip"
+        zip_path = OUTPUT_DIR / zip_name
+
+        temp_dir = Path(tempfile.mkdtemp(prefix=f"reef_{job_id}_"))
+        try:
+            bundle_params_path = temp_dir / params_name
+            bundle_stl_path = temp_dir / main_stl_name
+            bundle_png_path = temp_dir / main_png_name
+
+            shutil.copy2(params_path, bundle_params_path)
+
+            ok, message = run_blender(bundle_params_path, bundle_stl_path, bundle_png_path)
+            if not ok:
+                update_job(
+                    job_id,
+                    status="error",
+                    message=message,
+                    result=result,
+                    summary=summary,
+                    stage="error",
+                    eta_seconds=None,
+                )
+                return
+
+            region_files.append({
+                "region": "Main",
+                "scad_url": None,
+                "stl_url": f"/output/{main_stl_name}",
+                "png_url": f"/output/{main_png_name}",
+            })
+
+            shutil.copy2(bundle_stl_path, main_stl_path)
+            shutil.copy2(bundle_png_path, main_png_path)
+
+            update_job(
+                job_id,
+                message="Packaging ZIP...",
+                progress=95,
+                stage="packaging_zip",
+                eta_seconds=None,
+            )
+
+            with zipfile.ZipFile(zip_path, "w", compression=zipfile.ZIP_DEFLATED) as zf:
+                for file_path in temp_dir.glob("*"):
+                    zf.write(file_path, arcname=file_path.name)
+
+            result["region_files"] = region_files
+            result["zip_url"] = f"/output/{zip_name}"
+            result["stl_url"] = f"/output/{main_stl_name}"
+            result["png_url"] = f"/output/{main_png_name}"
+
+            update_job(
+                job_id,
+                status="done",
+                message="ZIP bundle generated.",
+                result=result,
+                summary=summary,
+                progress=100,
+                stage="done",
+                eta_seconds=None,
+            )
+            return
+        finally:
+            shutil.rmtree(temp_dir, ignore_errors=True)
 
 def process_job(job_id: str, request_data: dict[str, Any]) -> None:
     try:
@@ -538,18 +1350,10 @@ def process_job(job_id: str, request_data: dict[str, Any]) -> None:
             message="Loading dataset...",
             progress=10,
             stage="loading_dataset",
-            eta_seconds=20,
+            eta_seconds=None,
         )
 
         demo_file = request_data["demo_file"]
-        export_mode = request_data["export_mode"]
-        source_max = int(request_data["source_max"])
-        base_radius_multiplier = float(request_data["base_radius_multiplier"])
-        core_height_multiplier = float(request_data["core_height_multiplier"])
-        branch_density_multiplier = float(request_data["branch_density_multiplier"])
-        branch_thickness_multiplier = float(request_data["branch_thickness_multiplier"])
-        shape_family = request_data["shape_family"]
-
         dataset_path = DATA_DIR / demo_file
         if not dataset_path.exists():
             update_job(
@@ -571,289 +1375,16 @@ def process_job(job_id: str, request_data: dict[str, Any]) -> None:
             summary=summary,
             progress=20,
             stage="building_model",
-            eta_seconds=18,
-        )
-
-        model_data = build_branch_data(
-            agg=agg,
-            source_max=source_max,
-            base_radius_multiplier=base_radius_multiplier,
-            core_height_multiplier=core_height_multiplier,
-            branch_density_multiplier=branch_density_multiplier,
-            branch_thickness_multiplier=branch_thickness_multiplier,
-        )
-
-        total = agg["total"]
-
-        title = f"Ocean Reef Prototype - {demo_file} - {shape_family}"
-        main_scad_name = f"reef_{job_id}.scad"
-        main_stl_name = f"reef_{job_id}.stl"
-        main_png_name = f"reef_{job_id}.png"
-
-        main_scad_path = GENERATED_DIR / main_scad_name
-        main_stl_path = OUTPUT_DIR / main_stl_name
-        main_png_path = OUTPUT_DIR / main_png_name
-
-        scad_code = build_shape_scad(
-            shape_family=shape_family,
-            title=title,
-            model_data=model_data,
-            total=total,
-            source_max=source_max,
-        )
-        main_scad_path.write_text(scad_code, encoding="utf-8")
-
-        result: dict[str, Any] = {
-            "job_id": job_id,
-            "dataset_name": demo_file,
-            "summary": summary,
-            "preset": request_data["preset"],
-            "export_mode": export_mode,
-            "shape_family": shape_family,
-            "scad_url": f"/generated/{main_scad_name}",
-            "stl_url": None,
-            "png_url": None,
-            "zip_url": None,
-            "region_files": [],
-            "params": {
-                "source_max": source_max,
-                "base_radius_multiplier": base_radius_multiplier,
-                "core_height_multiplier": core_height_multiplier,
-                "branch_density_multiplier": branch_density_multiplier,
-                "branch_thickness_multiplier": branch_thickness_multiplier,
-            },
-        }
-
-        if export_mode == "scad_only":
-            update_job(
-                job_id,
-                message="Rendering PNG preview...",
-                progress=75,
-                stage="rendering_png",
-                eta_seconds=8,
-            )
-
-            ok, message = render_png_from_scad(main_scad_path, main_png_path)
-            if ok:
-                result["png_url"] = f"/output/{main_png_name}"
-            else:
-                result["png_warning"] = message
-
-            update_job(
-                job_id,
-                status="done",
-                message="SCAD generated.",
-                result=result,
-                summary=summary,
-                progress=100,
-                stage="done",
-                eta_seconds=0,
-            )
-            return
-
-        if export_mode == "single_stl":
-            update_job(
-                job_id,
-                message="Rendering STL with OpenSCAD...",
-                progress=45,
-                stage="rendering_stl",
-                eta_seconds=40,
-            )
-
-            ok, message = run_openscad(main_scad_path, main_stl_path)
-            if not ok:
-                update_job(
-                    job_id,
-                    status="error",
-                    message=message,
-                    result=result,
-                    summary=summary,
-                    stage="error",
-                    eta_seconds=None,
-                )
-                return
-
-            result["stl_url"] = f"/output/{main_stl_name}"
-
-            update_job(
-                job_id,
-                message="Rendering PNG preview...",
-                progress=82,
-                stage="rendering_png",
-                eta_seconds=12,
-            )
-
-            ok, message = render_png_from_scad(main_scad_path, main_png_path)
-            if ok:
-                result["png_url"] = f"/output/{main_png_name}"
-            else:
-                result["png_warning"] = message
-
-            update_job(
-                job_id,
-                status="done",
-                message="STL generated.",
-                result=result,
-                summary=summary,
-                progress=100,
-                stage="done",
-                eta_seconds=0,
-            )
-            return
-
-        if export_mode == "separate_regions_zip":
-            update_job(
-                job_id,
-                message="Rendering separate region files...",
-                progress=35,
-                stage="rendering_regions",
-                eta_seconds=90,
-            )
-
-            region_files: list[dict[str, str | None]] = []
-            zip_name = f"reef_bundle_{job_id}.zip"
-            zip_path = OUTPUT_DIR / zip_name
-
-            temp_dir = Path(tempfile.mkdtemp(prefix=f"reef_{job_id}_"))
-            try:
-                bundle_params = {
-                    "job_id": job_id,
-                    "dataset_name": demo_file,
-                    "export_mode": export_mode,
-                    "summary": summary,
-                    "shape_family": shape_family,
-                    "params": result["params"],
-                }
-                (temp_dir / "params.json").write_text(
-                    json.dumps(bundle_params, indent=2, ensure_ascii=False),
-                    encoding="utf-8",
-                )
-                shutil.copy2(main_scad_path, temp_dir / main_scad_name)
-
-                if shape_family != "coral":
-                    region_slug = "main"
-                    region_scad_name = f"reef_{job_id}_{region_slug}.scad"
-                    region_stl_name = f"reef_{job_id}_{region_slug}.stl"
-                    region_png_name = f"reef_{job_id}_{region_slug}.png"
-
-                    region_scad_path = GENERATED_DIR / region_scad_name
-                    region_stl_path = OUTPUT_DIR / region_stl_name
-                    region_png_path = OUTPUT_DIR / region_png_name
-
-                    region_scad_path.write_text(scad_code, encoding="utf-8")
-
-                    ok, message = run_openscad(region_scad_path, region_stl_path)
-                    if not ok:
-                        update_job(
-                            job_id,
-                            status="error",
-                            message=message,
-                            result=result,
-                            summary=summary,
-                            stage="error",
-                            eta_seconds=None,
-                        )
-                        return
-
-                    region_png_url = None
-                    ok, _ = render_png_from_scad(region_scad_path, region_png_path)
-                    if ok:
-                        region_png_url = f"/output/{region_png_name}"
-
-                    shutil.copy2(region_scad_path, temp_dir / region_scad_name)
-                    shutil.copy2(region_stl_path, temp_dir / region_stl_name)
-                    if region_png_url and region_png_path.exists():
-                        shutil.copy2(region_png_path, temp_dir / region_png_name)
-
-                    region_files.append({
-                        "region": "Main",
-                        "scad_url": f"/generated/{region_scad_name}",
-                        "stl_url": f"/output/{region_stl_name}",
-                        "png_url": region_png_url,
-                    })
-                else:
-                    region_slug = "main"
-                    region_scad_name = f"reef_{job_id}_{region_slug}.scad"
-                    region_stl_name = f"reef_{job_id}_{region_slug}.stl"
-                    region_png_name = f"reef_{job_id}_{region_slug}.png"
-
-                    region_scad_path = GENERATED_DIR / region_scad_name
-                    region_stl_path = OUTPUT_DIR / region_stl_name
-                    region_png_path = OUTPUT_DIR / region_png_name
-
-                    region_scad_path.write_text(scad_code, encoding="utf-8")
-
-                    ok, message = run_openscad(region_scad_path, region_stl_path)
-                    if not ok:
-                        update_job(
-                            job_id,
-                            status="error",
-                            message=message,
-                            result=result,
-                            summary=summary,
-                            stage="error",
-                            eta_seconds=None,
-                        )
-                        return
-
-                    region_png_url = None
-                    ok, _ = render_png_from_scad(region_scad_path, region_png_path)
-                    if ok:
-                        region_png_url = f"/output/{region_png_name}"
-
-                    shutil.copy2(region_scad_path, temp_dir / region_scad_name)
-                    shutil.copy2(region_stl_path, temp_dir / region_stl_name)
-                    if region_png_url and region_png_path.exists():
-                        shutil.copy2(region_png_path, temp_dir / region_png_name)
-
-                    region_files.append({
-                        "region": "Main",
-                        "scad_url": f"/generated/{region_scad_name}",
-                        "stl_url": f"/output/{region_stl_name}",
-                        "png_url": region_png_url,
-                    })
-
-                update_job(
-                    job_id,
-                    message="Packaging ZIP...",
-                    progress=95,
-                    stage="packaging_zip",
-                    eta_seconds=5,
-                )
-
-                with zipfile.ZipFile(zip_path, "w", compression=zipfile.ZIP_DEFLATED) as zf:
-                    for file_path in temp_dir.glob("*"):
-                        zf.write(file_path, arcname=file_path.name)
-
-                result["region_files"] = region_files
-                result["zip_url"] = f"/output/{zip_name}"
-
-                if region_files:
-                    first_png = next((r["png_url"] for r in region_files if r.get("png_url")), None)
-                    if first_png:
-                        result["png_url"] = first_png
-
-                update_job(
-                    job_id,
-                    status="done",
-                    message="ZIP bundle generated.",
-                    result=result,
-                    summary=summary,
-                    progress=100,
-                    stage="done",
-                    eta_seconds=0,
-                )
-                return
-            finally:
-                shutil.rmtree(temp_dir, ignore_errors=True)
-
-        update_job(
-            job_id,
-            status="error",
-            message=f"Unknown export mode: {export_mode}",
-            stage="error",
             eta_seconds=None,
         )
+
+        shape_family = request_data["shape_family"]
+
+        if shape_family in {"starfish", "seaweed"}:
+            process_openscad_job(job_id, request_data, agg, summary)
+            return
+
+        process_blender_job(job_id, request_data, agg, summary)
 
     except Exception as exc:
         traceback.print_exc()
@@ -867,6 +1398,9 @@ def process_job(job_id: str, request_data: dict[str, Any]) -> None:
         )
 
 
+ensure_blender_script()
+
+
 @app.get("/", response_class=HTMLResponse)
 async def index(request: Request) -> HTMLResponse:
     return templates.TemplateResponse(
@@ -878,7 +1412,6 @@ async def index(request: Request) -> HTMLResponse:
             "shape_families": SHAPE_FAMILIES,
         },
     )
-
 
 @app.get("/favicon.ico")
 async def favicon() -> Response:
@@ -955,7 +1488,6 @@ async def generate(
         }
     )
 
-
 @app.get("/job/{job_id}")
 async def get_job(job_id: str) -> JSONResponse:
     job = get_job_record(job_id)
@@ -981,6 +1513,8 @@ async def serve_output(filename: str):
         media_type = "model/stl"
     elif suffix == ".zip":
         media_type = "application/zip"
+    elif suffix == ".json":
+        media_type = "application/json"
     elif suffix == ".scad":
         media_type = "text/plain; charset=utf-8"
     else:
