@@ -84,52 +84,34 @@ SHAPE_FAMILIES = {
 }
 
 SCAD_STARFISH = r"""
-$fn = 96;
+$fn = 72;
 
 // {{TITLE}}
 
 size_factor = {{SIZE_FACTOR}};
+thickness = 8 * size_factor;
+arm_length = 34 * size_factor;
+arm_width = 11 * size_factor;
 
-core_r = 8.8 * size_factor;
-body_h = 6.8 * size_factor;
-
-arm_len = 36 * size_factor;
-
-root_r = 5.4 * size_factor;
-mid_r1 = 4.3 * size_factor;
-mid_r2 = 3.1 * size_factor;
-tip_r = 1.6 * size_factor;
-
-module rounded_arm() {
+module arm() {
     hull() {
-        translate([0, 0, 0])
-            scale([1.08, 0.84, 0.40]) sphere(r=root_r);
-
-        translate([arm_len * 0.30, 0.3 * size_factor, 0.10 * size_factor])
-            scale([0.96, 0.68, 0.34]) sphere(r=mid_r1);
-
-        translate([arm_len * 0.62, -0.2 * size_factor, 0.20 * size_factor])
-            scale([0.86, 0.54, 0.28]) sphere(r=mid_r2);
-
-        translate([arm_len * 0.92, 0.1 * size_factor, 0.08 * size_factor])
-            scale([0.70, 0.34, 0.22]) sphere(r=tip_r);
+        translate([0, 0, 0]) cylinder(h=thickness, r=arm_width);
+        translate([arm_length * 0.55, 0, 0]) cylinder(h=thickness * 0.90, r=arm_width * 0.62);
+        translate([arm_length, 0, 0]) cylinder(h=thickness * 0.72, r=arm_width * 0.24);
     }
 }
 
 module center_body() {
     hull() {
-        scale([1.00, 1.00, 0.34]) sphere(r=core_r);
-        translate([0, 0, body_h * 0.12])
-            scale([0.78, 0.78, 0.20]) sphere(r=core_r * 0.92);
+        cylinder(h=thickness, r=arm_width * 1.05);
+        translate([0, 0, thickness * 0.20]) cylinder(h=thickness * 0.65, r=arm_width * 0.92);
     }
 }
 
 union() {
     center_body();
-
     for (i = [0:4]) {
-        rotate([0, 0, i * 72])
-            rounded_arm();
+        rotate([0, 0, i * 72]) arm();
     }
 }
 """
@@ -186,6 +168,78 @@ union() {
             translate([base_radius * 0.30, 0, 3.0 * size_factor])
                 blade(seed_angle=i * 19, bend=0.90 + 0.06 * i, spread=0.85 + 0.05 * i);
     }
+}
+"""
+
+SCAD_CLOWNFISH = r"""
+$fn = 96;
+
+// {{TITLE}}
+
+size_factor = {{SIZE_FACTOR}};
+
+body_len = 70 * size_factor;
+body_height = 15 * size_factor;
+body_width = 11 * size_factor;
+tail_len = 20 * size_factor;
+
+module body() {
+    hull() {
+        translate([-body_len * 0.35, 0, 0])
+            scale([1.15, 0.95, 0.82]) sphere(r=body_height);
+
+        translate([0, 0, 0])
+            scale([1.45, 1.00, 0.88]) sphere(r=body_height);
+
+        translate([body_len * 0.25, 0, 0])
+            scale([0.90, 0.82, 0.74]) sphere(r=body_height * 0.88);
+    }
+}
+
+module head() {
+    translate([-body_len * 0.55, 0, -body_height * 0.03])
+        scale([0.92, 0.88, 0.78]) sphere(r=body_height * 0.82);
+}
+
+module tail() {
+    hull() {
+        translate([body_len * 0.45, 0, 0])
+            scale([0.62, 0.68, 0.68]) sphere(r=body_height * 0.78);
+
+        translate([body_len * 0.45 + tail_len, 0, body_height * 0.72])
+            sphere(r=body_width * 0.82);
+
+        translate([body_len * 0.45 + tail_len, 0, -body_height * 0.72])
+            sphere(r=body_width * 0.82);
+    }
+}
+
+module dorsal_fin() {
+    hull() {
+        translate([-8 * size_factor, 0, body_height * 0.82])
+            sphere(r=body_width * 0.42);
+
+        translate([10 * size_factor, 0, body_height * 1.22])
+            sphere(r=body_width * 0.24);
+    }
+}
+
+module bottom_fin() {
+    hull() {
+        translate([-3 * size_factor, 0, -body_height * 0.62])
+            sphere(r=body_width * 0.26);
+
+        translate([10 * size_factor, 0, -body_height * 0.92])
+            sphere(r=body_width * 0.14);
+    }
+}
+
+union() {
+    body();
+    head();
+    tail();
+    dorsal_fin();
+    bottom_fin();
 }
 """
 
@@ -556,129 +610,108 @@ def create_coral(params):
 def create_clownfish(params):
     scale = params["size_factor"]
 
-    body_main = add_uv_sphere(
-        radius=1.30 * scale,
-        scale=(2.15, 1.05, 0.82),
-        location=(0.10 * scale, 0, 0),
-        name="FishBodyMain",
-    )
-    body_front = add_uv_sphere(
-        radius=0.95 * scale,
-        scale=(1.10, 0.95, 0.82),
-        location=(-2.05 * scale, 0, 0),
-        name="FishBodyFront",
-    )
-    cheek = add_uv_sphere(
-        radius=0.70 * scale,
-        scale=(0.90, 0.90, 0.74),
-        location=(-2.75 * scale, 0, -0.05 * scale),
-        name="FishCheek",
-    )
-    tail_root = add_uv_sphere(
-        radius=0.62 * scale,
-        scale=(0.75, 0.72, 0.72),
-        location=(2.55 * scale, 0, 0),
-        name="FishTailRoot",
+    # --- BODY ---
+    body = add_uv_sphere(
+        radius=1.3 * scale,
+        scale=(2.0, 1.1, 0.9),
+        location=(0, 0, 0),
+        name="Body",
     )
 
+    head = add_uv_sphere(
+        radius=1.0 * scale,
+        scale=(1.1, 1.0, 0.9),
+        location=(-2.0 * scale, 0, 0),
+        name="Head",
+    )
+
+    tail_core = add_uv_sphere(
+        radius=0.7 * scale,
+        scale=(0.7, 0.8, 0.8),
+        location=(2.4 * scale, 0, 0),
+        name="TailCore",
+    )
+
+    # --- TAIL ---
     tail_top = add_cone(
-        location=(3.65 * scale, 0, 0.72 * scale),
-        radius1=0.82 * scale,
-        radius2=0.08 * scale,
-        depth=2.05 * scale,
+        location=(3.3 * scale, 0, 0.8 * scale),
+        radius1=0.9 * scale,
+        radius2=0.05 * scale,
+        depth=2.0 * scale,
         rotation=(0, math.radians(90), 0),
-        name="FishTailTop",
-    )
-    tail_bottom = add_cone(
-        location=(3.65 * scale, 0, -0.72 * scale),
-        radius1=0.82 * scale,
-        radius2=0.08 * scale,
-        depth=2.05 * scale,
-        rotation=(0, math.radians(90), 0),
-        name="FishTailBottom",
+        name="TailTop",
     )
 
-    dorsal_front = add_cone(
-        location=(-0.45 * scale, 0, 1.18 * scale),
-        radius1=0.72 * scale,
-        radius2=0.10 * scale,
-        depth=1.25 * scale,
-        rotation=(math.radians(90), 0, 0),
-        name="FishDorsalFront",
+    tail_bottom = add_cone(
+        location=(3.3 * scale, 0, -0.8 * scale),
+        radius1=0.9 * scale,
+        radius2=0.05 * scale,
+        depth=2.0 * scale,
+        rotation=(0, math.radians(90), 0),
+        name="TailBottom",
     )
-    dorsal_back = add_cone(
-        location=(0.95 * scale, 0, 1.02 * scale),
-        radius1=0.52 * scale,
-        radius2=0.08 * scale,
-        depth=1.00 * scale,
+
+    # --- FINS ---
+    dorsal = add_cone(
+        location=(0, 0, 1.3 * scale),
+        radius1=0.8 * scale,
+        radius2=0.1 * scale,
+        depth=1.6 * scale,
         rotation=(math.radians(90), 0, 0),
-        name="FishDorsalBack",
+        name="Dorsal",
     )
 
     ventral = add_cone(
-        location=(-0.10 * scale, 0, -0.98 * scale),
-        radius1=0.46 * scale,
-        radius2=0.08 * scale,
-        depth=0.95 * scale,
+        location=(0, 0, -1.1 * scale),
+        radius1=0.5 * scale,
+        radius2=0.1 * scale,
+        depth=1.2 * scale,
         rotation=(math.radians(-90), 0, 0),
-        name="FishVentral",
+        name="Ventral",
     )
 
-    pectoral_left = add_cone(
-        location=(-1.15 * scale, 0.72 * scale, -0.05 * scale),
-        radius1=0.34 * scale,
-        radius2=0.06 * scale,
-        depth=0.82 * scale,
-        rotation=(0, math.radians(68), math.radians(18)),
-        name="FishPectoralLeft",
-    )
-    pectoral_right = add_cone(
-        location=(-1.15 * scale, -0.72 * scale, -0.05 * scale),
-        radius1=0.34 * scale,
-        radius2=0.06 * scale,
-        depth=0.82 * scale,
-        rotation=(0, math.radians(-68), math.radians(-18)),
-        name="FishPectoralRight",
+    pectoral = add_cone(
+        location=(-1.0 * scale, 1.0 * scale, 0),
+        radius1=0.4 * scale,
+        radius2=0.05 * scale,
+        depth=1.0 * scale,
+        rotation=(0, math.radians(70), math.radians(20)),
+        name="Pectoral",
     )
 
     objects = [
-        body_main,
-        body_front,
-        cheek,
-        tail_root,
+        body,
+        head,
+        tail_core,
         tail_top,
         tail_bottom,
-        dorsal_front,
-        dorsal_back,
+        dorsal,
         ventral,
-        pectoral_left,
-        pectoral_right,
+        pectoral,
     ]
 
     fish = join_objects(objects, name="Clownfish")
-    finalize_mesh(fish, remesh_voxel=max(0.07 * scale, 0.05), decimate_ratio=0.98)
 
-    for xpos, width, tilt in (
-        (-1.55 * scale, 0.12 * scale, 9),
-        (-0.25 * scale, 0.14 * scale, 3),
-        (1.10 * scale, 0.12 * scale, -6),
-    ):
+    # 🔥 WICHTIG: weniger zerstörerisch als vorher
+    add_remesh(fish, voxel_size=0.08 * scale)
+    shade_smooth(fish)
+
+    # --- STRIPES (optional) ---
+    for xpos in (-1.5 * scale, 0.0 * scale, 1.2 * scale):
         bpy.ops.mesh.primitive_cube_add(location=(xpos, 0, 0))
         cutter = bpy.context.active_object
-        cutter.scale = (width, 2.10 * scale, 1.35 * scale)
-        cutter.rotation_euler[1] = math.radians(tilt)
+        cutter.scale = (0.25 * scale, 3.0 * scale, 2.0 * scale)
 
-        mod = fish.modifiers.new(name=f"StripeCut_{xpos}", type="BOOLEAN")
+        mod = fish.modifiers.new(name="StripeCut", type="BOOLEAN")
         mod.operation = "DIFFERENCE"
-        mod.solver = "FAST"
         mod.object = cutter
         apply_modifier(fish, mod.name)
 
         bpy.data.objects.remove(cutter, do_unlink=True)
 
     shade_smooth(fish)
-    return fish, (0, 0, 0.15 * scale), 1.40 * scale
 
+    return fish, (0, 0, 0.3 * scale), 1.4 * scale
 
 def create_shape(params):
     shape = params["shape_family"]
@@ -950,8 +983,21 @@ def process_openscad_job(job_id: str, request_data: dict[str, Any], agg: dict[st
 
     if shape_family == "starfish":
         scad_code = render_simple_scad(SCAD_STARFISH, title=title, size_factor=size_factor)
-    else:
+    elif shape_family == "seaweed":
         scad_code = render_simple_scad(SCAD_SEAWEED, title=title, size_factor=size_factor)
+    elif shape_family == "clownfish":
+        scad_code = render_simple_scad(SCAD_CLOWNFISH, title=title, size_factor=size_factor)
+    else:
+        update_job(
+            job_id,
+            status="error",
+            message=f"OpenSCAD shape not supported: {shape_family}",
+            result=result,
+            summary=summary,
+            stage="error",
+            eta_seconds=None,
+        )
+        return
 
     main_scad_path.write_text(scad_code, encoding="utf-8")
 
@@ -1380,7 +1426,7 @@ def process_job(job_id: str, request_data: dict[str, Any]) -> None:
 
         shape_family = request_data["shape_family"]
 
-        if shape_family in {"starfish", "seaweed"}:
+        if shape_family in {"starfish", "seaweed", "clownfish"}:
             process_openscad_job(job_id, request_data, agg, summary)
             return
 

@@ -6,10 +6,8 @@ import random
 import sys
 from pathlib import Path
 
-try:
-    import bpy
-except ImportError:
-    bpy = None
+import bpy
+
 
 def parse_args():
     argv = sys.argv
@@ -367,129 +365,108 @@ def create_coral(params):
 def create_clownfish(params):
     scale = params["size_factor"]
 
-    body_main = add_uv_sphere(
-        radius=1.30 * scale,
-        scale=(2.15, 1.05, 0.82),
-        location=(0.10 * scale, 0, 0),
-        name="FishBodyMain",
-    )
-    body_front = add_uv_sphere(
-        radius=0.95 * scale,
-        scale=(1.10, 0.95, 0.82),
-        location=(-2.05 * scale, 0, 0),
-        name="FishBodyFront",
-    )
-    cheek = add_uv_sphere(
-        radius=0.70 * scale,
-        scale=(0.90, 0.90, 0.74),
-        location=(-2.75 * scale, 0, -0.05 * scale),
-        name="FishCheek",
-    )
-    tail_root = add_uv_sphere(
-        radius=0.62 * scale,
-        scale=(0.75, 0.72, 0.72),
-        location=(2.55 * scale, 0, 0),
-        name="FishTailRoot",
+    # --- BODY ---
+    body = add_uv_sphere(
+        radius=1.3 * scale,
+        scale=(2.0, 1.1, 0.9),
+        location=(0, 0, 0),
+        name="Body",
     )
 
+    head = add_uv_sphere(
+        radius=1.0 * scale,
+        scale=(1.1, 1.0, 0.9),
+        location=(-2.0 * scale, 0, 0),
+        name="Head",
+    )
+
+    tail_core = add_uv_sphere(
+        radius=0.7 * scale,
+        scale=(0.7, 0.8, 0.8),
+        location=(2.4 * scale, 0, 0),
+        name="TailCore",
+    )
+
+    # --- TAIL ---
     tail_top = add_cone(
-        location=(3.65 * scale, 0, 0.72 * scale),
-        radius1=0.82 * scale,
-        radius2=0.08 * scale,
-        depth=2.05 * scale,
+        location=(3.3 * scale, 0, 0.8 * scale),
+        radius1=0.9 * scale,
+        radius2=0.05 * scale,
+        depth=2.0 * scale,
         rotation=(0, math.radians(90), 0),
-        name="FishTailTop",
-    )
-    tail_bottom = add_cone(
-        location=(3.65 * scale, 0, -0.72 * scale),
-        radius1=0.82 * scale,
-        radius2=0.08 * scale,
-        depth=2.05 * scale,
-        rotation=(0, math.radians(90), 0),
-        name="FishTailBottom",
+        name="TailTop",
     )
 
-    dorsal_front = add_cone(
-        location=(-0.45 * scale, 0, 1.18 * scale),
-        radius1=0.72 * scale,
-        radius2=0.10 * scale,
-        depth=1.25 * scale,
-        rotation=(math.radians(90), 0, 0),
-        name="FishDorsalFront",
+    tail_bottom = add_cone(
+        location=(3.3 * scale, 0, -0.8 * scale),
+        radius1=0.9 * scale,
+        radius2=0.05 * scale,
+        depth=2.0 * scale,
+        rotation=(0, math.radians(90), 0),
+        name="TailBottom",
     )
-    dorsal_back = add_cone(
-        location=(0.95 * scale, 0, 1.02 * scale),
-        radius1=0.52 * scale,
-        radius2=0.08 * scale,
-        depth=1.00 * scale,
+
+    # --- FINS ---
+    dorsal = add_cone(
+        location=(0, 0, 1.3 * scale),
+        radius1=0.8 * scale,
+        radius2=0.1 * scale,
+        depth=1.6 * scale,
         rotation=(math.radians(90), 0, 0),
-        name="FishDorsalBack",
+        name="Dorsal",
     )
 
     ventral = add_cone(
-        location=(-0.10 * scale, 0, -0.98 * scale),
-        radius1=0.46 * scale,
-        radius2=0.08 * scale,
-        depth=0.95 * scale,
+        location=(0, 0, -1.1 * scale),
+        radius1=0.5 * scale,
+        radius2=0.1 * scale,
+        depth=1.2 * scale,
         rotation=(math.radians(-90), 0, 0),
-        name="FishVentral",
+        name="Ventral",
     )
 
-    pectoral_left = add_cone(
-        location=(-1.15 * scale, 0.72 * scale, -0.05 * scale),
-        radius1=0.34 * scale,
-        radius2=0.06 * scale,
-        depth=0.82 * scale,
-        rotation=(0, math.radians(68), math.radians(18)),
-        name="FishPectoralLeft",
-    )
-    pectoral_right = add_cone(
-        location=(-1.15 * scale, -0.72 * scale, -0.05 * scale),
-        radius1=0.34 * scale,
-        radius2=0.06 * scale,
-        depth=0.82 * scale,
-        rotation=(0, math.radians(-68), math.radians(-18)),
-        name="FishPectoralRight",
+    pectoral = add_cone(
+        location=(-1.0 * scale, 1.0 * scale, 0),
+        radius1=0.4 * scale,
+        radius2=0.05 * scale,
+        depth=1.0 * scale,
+        rotation=(0, math.radians(70), math.radians(20)),
+        name="Pectoral",
     )
 
     objects = [
-        body_main,
-        body_front,
-        cheek,
-        tail_root,
+        body,
+        head,
+        tail_core,
         tail_top,
         tail_bottom,
-        dorsal_front,
-        dorsal_back,
+        dorsal,
         ventral,
-        pectoral_left,
-        pectoral_right,
+        pectoral,
     ]
 
     fish = join_objects(objects, name="Clownfish")
-    finalize_mesh(fish, remesh_voxel=max(0.07 * scale, 0.05), decimate_ratio=0.98)
 
-    for xpos, width, tilt in (
-        (-1.55 * scale, 0.12 * scale, 9),
-        (-0.25 * scale, 0.14 * scale, 3),
-        (1.10 * scale, 0.12 * scale, -6),
-    ):
+    # 🔥 WICHTIG: weniger zerstörerisch als vorher
+    add_remesh(fish, voxel_size=0.08 * scale)
+    shade_smooth(fish)
+
+    # --- STRIPES (optional) ---
+    for xpos in (-1.5 * scale, 0.0 * scale, 1.2 * scale):
         bpy.ops.mesh.primitive_cube_add(location=(xpos, 0, 0))
         cutter = bpy.context.active_object
-        cutter.scale = (width, 2.10 * scale, 1.35 * scale)
-        cutter.rotation_euler[1] = math.radians(tilt)
+        cutter.scale = (0.25 * scale, 3.0 * scale, 2.0 * scale)
 
-        mod = fish.modifiers.new(name=f"StripeCut_{xpos}", type="BOOLEAN")
+        mod = fish.modifiers.new(name="StripeCut", type="BOOLEAN")
         mod.operation = "DIFFERENCE"
-        mod.solver = "FAST"
         mod.object = cutter
         apply_modifier(fish, mod.name)
 
         bpy.data.objects.remove(cutter, do_unlink=True)
 
     shade_smooth(fish)
-    return fish, (0, 0, 0.15 * scale), 1.40 * scale
 
+    return fish, (0, 0, 0.3 * scale), 1.4 * scale
 
 def create_shape(params):
     shape = params["shape_family"]
