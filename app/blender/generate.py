@@ -10,7 +10,8 @@ try:
     import bpy
     import bmesh
 except ImportError:
-    raise RuntimeError("This script must be run inside Blender")
+    bpy = None
+    bmesh = None
 
 
 def parse_args():
