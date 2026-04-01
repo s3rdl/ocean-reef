@@ -1068,8 +1068,6 @@ def render_png_from_scad(scad_path: Path, png_path: Path) -> tuple[bool, str]:
         "openscad",
         "--render",
         "--imgsize=1600,1200",
-        "--colorscheme=TomorrowNight",
-        "--projection=p",
         "-o",
         str(png_path),
         str(scad_path),
@@ -1088,94 +1086,6 @@ def render_png_from_scad(scad_path: Path, png_path: Path) -> tuple[bool, str]:
 
     if not png_path.exists() or png_path.stat().st_size == 0:
         return False, "PNG render produced no usable file."
-
-    return True, ""
-
-def render_png_from_stl_with_openscad(stl_path: Path, png_path: Path) -> tuple[bool, str]:
-    wrapper_scad = GENERATED_DIR / f"_preview_{stl_path.stem}.scad"
-
-    wrapper_code = f'''
-$fn=96;
-color([0.92, 0.55, 0.32])
-import("{stl_path.as_posix()}");
-'''.strip()
-
-    wrapper_scad.write_text(wrapper_code, encoding="utf-8")
-
-    cmd = [
-        "xvfb-run",
-        "-a",
-        "-s",
-        "-screen 0 1600x1200x24",
-        "openscad",
-        "--render",
-        "--imgsize=1600,1200",
-        "--colorscheme=Tomorrow",
-        "-o",
-        str(png_path),
-        str(wrapper_scad),
-    ]
-
-    try:
-        completed = subprocess.run(cmd, capture_output=True, text=True, check=False)
-    except FileNotFoundError as exc:
-        missing = str(exc)
-        if "xvfb-run" in missing:
-            return False, "xvfb-run missing → sudo apt-get install -y xvfb"
-        return False, "OpenSCAD not found"
-
-    if completed.returncode != 0:
-        return False, (completed.stderr or completed.stdout or "PNG render failed").strip()
-
-    if not png_path.exists() or png_path.stat().st_size == 0:
-        return False, "PNG file empty"
-
-    return True, ""
-
-def render_png_from_stl_with_openscad(stl_path: Path, png_path: Path) -> tuple[bool, str]:
-    wrapper_scad = GENERATED_DIR / f"_preview_{stl_path.stem}.scad"
-
-    wrapper_code = f"""
-$fn=96;
-
-module preview_model() {{
-    import("{stl_path.as_posix()}");
-}}
-
-color([1.0, 0.45, 0.20])
-preview_model();
-""".strip()
-
-    wrapper_scad.write_text(wrapper_code, encoding="utf-8")
-
-    cmd = [
-        "xvfb-run",
-        "-a",
-        "-s",
-        "-screen 0 1600x1200x24",
-        "openscad",
-        "--render",
-        "--viewall",
-        "--projection=p",
-        "--imgsize=1600,1200",
-        "--colorscheme=Tomorrow",
-        "-o",
-        str(png_path),
-        str(wrapper_scad),
-    ]
-    try:
-        completed = subprocess.run(cmd, capture_output=True, text=True, check=False)
-    except FileNotFoundError as exc:
-        missing = str(exc)
-        if "xvfb-run" in missing:
-            return False, "xvfb-run not found. Install it with: sudo apt-get install -y xvfb"
-        return False, "OpenSCAD not found in PATH."
-
-    if completed.returncode != 0:
-        return False, (completed.stderr or completed.stdout or "PNG render from STL failed").strip()
-
-    if not png_path.exists() or png_path.stat().st_size == 0:
-        return False, "PNG render from STL produced no usable file."
 
     return True, ""
 
@@ -1550,6 +1460,51 @@ def process_blender_job(job_id: str, request_data: dict[str, Any], agg: dict[str
 
         finally:
             shutil.rmtree(temp_dir, ignore_errors=True)
+
+def render_png_from_stl_with_openscad(stl_path: Path, png_path: Path) -> tuple[bool, str]:
+    wrapper_scad = GENERATED_DIR / f"_preview_{stl_path.stem}.scad"
+
+    wrapper_code = f"""
+$fn=96;
+
+module preview_model() {{
+    import("{stl_path.as_posix()}");
+}}
+
+color([1.0, 0.45, 0.20])
+preview_model();
+""".strip()
+
+    wrapper_scad.write_text(wrapper_code, encoding="utf-8")
+
+    cmd = [
+        "xvfb-run",
+        "-a",
+        "-s",
+        "-screen 0 1600x1200x24",
+        "openscad",
+        "--render",
+        "--imgsize=1600,1200",
+        "-o",
+        str(png_path),
+        str(wrapper_scad),
+    ]
+
+    try:
+        completed = subprocess.run(cmd, capture_output=True, text=True, check=False)
+    except FileNotFoundError as exc:
+        missing = str(exc)
+        if "xvfb-run" in missing:
+            return False, "xvfb-run not found. Install it with: sudo apt-get install -y xvfb"
+        return False, "OpenSCAD not found in PATH."
+
+    if completed.returncode != 0:
+        return False, (completed.stderr or completed.stdout or "PNG render from STL failed").strip()
+
+    if not png_path.exists() or png_path.stat().st_size == 0:
+        return False, "PNG render from STL produced no usable file."
+
+    return True, ""
 
 def process_blender_job(job_id: str, request_data: dict[str, Any], agg: dict[str, Any], summary: dict[str, Any]) -> None:
     demo_file = request_data["demo_file"]
