@@ -6,7 +6,11 @@ import random
 import sys
 from pathlib import Path
 
-import bpy
+try:
+    import bpy
+    import bmesh
+except ImportError:
+    raise RuntimeError("This script must be run inside Blender")
 
 
 def parse_args():
@@ -198,6 +202,11 @@ def add_remesh(obj, voxel_size=0.18, smooth=True):
     mod.use_smooth_shade = smooth
     apply_modifier(obj, mod.name)
 
+def add_subsurf(obj, levels=1):
+    mod = obj.modifiers.new(name="Subsurf", type="SUBSURF")
+    mod.levels = levels
+    mod.render_levels = levels
+    apply_modifier(obj, mod.name)
 
 def add_decimate(obj, ratio=0.92):
     mod = obj.modifiers.new(name="Decimate", type="DECIMATE")
@@ -361,112 +370,229 @@ def create_coral(params):
     finalize_mesh(coral, remesh_voxel=max(0.10 * scale, 0.07), decimate_ratio=0.95)
     return coral, (0, 0, 2.2 * scale), 1.25 * scale
 
+def create_cartoon_fish_body(scale: float):
+    mesh = bpy.data.meshes.new("CartoonFishBody")
+    obj = bpy.data.objects.new("CartoonFishBody", mesh)
+    bpy.context.collection.objects.link(obj)
 
+    bm = bmesh.new()
+
+    # side silhouette in X/Z plane, inspired by a cartoon clownfish profile
+    pts = [
+        (-2.60 * scale,  0.10 * scale),   # mouth top
+        (-2.15 * scale,  0.72 * scale),   # forehead
+        (-1.10 * scale,  1.18 * scale),   # upper head/body
+        ( 0.20 * scale,  1.28 * scale),   # top mid body
+        ( 1.30 * scale,  1.02 * scale),   # upper tail root
+        ( 2.00 * scale,  0.55 * scale),   # tail neck top
+        ( 2.55 * scale,  1.35 * scale),   # tail fin top
+        ( 3.10 * scale,  0.35 * scale),   # tail tip mid
+        ( 2.55 * scale, -1.35 * scale),   # tail fin bottom
+        ( 2.00 * scale, -0.55 * scale),   # tail neck bottom
+        ( 1.10 * scale, -1.02 * scale),   # lower tail root
+        (-0.10 * scale, -1.22 * scale),   # belly
+        (-1.40 * scale, -0.98 * scale),   # lower cheek
+        (-2.30 * scale, -0.45 * scale),   # mouth lower
+    ]
+
+    verts = [bm.verts.new((x, 0.0, z)) for x, z in pts]
+    bm.verts.ensure_lookup_table()
+
+    face = bm.faces.new(verts)
+    bmesh.ops.recalc_face_normals(bm, faces=[face])
+
+    bm.to_mesh(mesh)
+    bm.free()
+
+    bpy.context.view_layer.objects.active = obj
+    obj.select_set(True)
+
+    # give thickness
+    solid = obj.modifiers.new(name="Solidify", type="SOLIDIFY")
+    solid.thickness = 0.95 * scale
+    solid.offset = 0.0
+    apply_modifier(obj, solid.name)
+
+    # soften blockiness
+    bevel = obj.modifiers.new(name="Bevel", type="BEVEL")
+    bevel.width = 0.10 * scale
+    bevel.segments = 3
+    apply_modifier(obj, bevel.name)
+
+    subsurf = obj.modifiers.new(name="Subsurf", type="SUBSURF")
+    subsurf.levels = 2
+    subsurf.render_levels = 2
+    apply_modifier(obj, subsurf.name)
+
+    shade_smooth(obj)
+    return obj
+    
 def create_clownfish(params):
     scale = params["size_factor"]
 
-    # --- BODY ---
-    body = add_uv_sphere(
-        radius=1.3 * scale,
-        scale=(2.0, 1.1, 0.9),
-        location=(0, 0, 0),
-        name="Body",
-    )
+    # -------- base half-mesh from a side/profile-driven cartoon fish silhouette --------
+    mesh = bpy.data.meshes.new("ClownfishMesh")
+    fish = bpy.data.objects.new("Clownfish", mesh)
+    bpy.context.collection.objects.link(fish)
+    bpy.context.view_layer.objects.active = fish
+    fish.select_set(True)
 
-    head = add_uv_sphere(
-        radius=1.0 * scale,
-        scale=(1.1, 1.0, 0.9),
-        location=(-2.0 * scale, 0, 0),
-        name="Head",
-    )
+    bm = bmesh.new()
 
-    tail_core = add_uv_sphere(
-        radius=0.7 * scale,
-        scale=(0.7, 0.8, 0.8),
-        location=(2.4 * scale, 0, 0),
-        name="TailCore",
-    )
-
-    # --- TAIL ---
-    tail_top = add_cone(
-        location=(3.3 * scale, 0, 0.8 * scale),
-        radius1=0.9 * scale,
-        radius2=0.05 * scale,
-        depth=2.0 * scale,
-        rotation=(0, math.radians(90), 0),
-        name="TailTop",
-    )
-
-    tail_bottom = add_cone(
-        location=(3.3 * scale, 0, -0.8 * scale),
-        radius1=0.9 * scale,
-        radius2=0.05 * scale,
-        depth=2.0 * scale,
-        rotation=(0, math.radians(90), 0),
-        name="TailBottom",
-    )
-
-    # --- FINS ---
-    dorsal = add_cone(
-        location=(0, 0, 1.3 * scale),
-        radius1=0.8 * scale,
-        radius2=0.1 * scale,
-        depth=1.6 * scale,
-        rotation=(math.radians(90), 0, 0),
-        name="Dorsal",
-    )
-
-    ventral = add_cone(
-        location=(0, 0, -1.1 * scale),
-        radius1=0.5 * scale,
-        radius2=0.1 * scale,
-        depth=1.2 * scale,
-        rotation=(math.radians(-90), 0, 0),
-        name="Ventral",
-    )
-
-    pectoral = add_cone(
-        location=(-1.0 * scale, 1.0 * scale, 0),
-        radius1=0.4 * scale,
-        radius2=0.05 * scale,
-        depth=1.0 * scale,
-        rotation=(0, math.radians(70), math.radians(20)),
-        name="Pectoral",
-    )
-
-    objects = [
-        body,
-        head,
-        tail_core,
-        tail_top,
-        tail_bottom,
-        dorsal,
-        ventral,
-        pectoral,
+    # x = length axis, z = height axis
+    # y is mirrored later, so we only build the center plane
+    # This is intentionally short, tall, and "Nemo-ish"
+    rings = [
+        {"x": -2.45 * scale, "z":  0.00 * scale, "h": 0.42 * scale, "w": 0.00 * scale},  # mouth / snout
+        {"x": -2.05 * scale, "z":  0.08 * scale, "h": 0.92 * scale, "w": 0.30 * scale},  # forehead
+        {"x": -1.35 * scale, "z":  0.12 * scale, "h": 1.22 * scale, "w": 0.62 * scale},  # head bulk
+        {"x": -0.25 * scale, "z":  0.10 * scale, "h": 1.28 * scale, "w": 0.82 * scale},  # front body
+        {"x":  0.75 * scale, "z":  0.02 * scale, "h": 1.12 * scale, "w": 0.74 * scale},  # mid body
+        {"x":  1.45 * scale, "z": -0.02 * scale, "h": 0.82 * scale, "w": 0.42 * scale},  # tail root pinch
+        {"x":  2.00 * scale, "z":  0.00 * scale, "h": 0.42 * scale, "w": 0.16 * scale},  # tail neck
     ]
 
-    fish = join_objects(objects, name="Clownfish")
+    ring_verts = []
 
-    # 🔥 WICHTIG: weniger zerstörerisch als vorher
-    add_remesh(fish, voxel_size=0.08 * scale)
+    # each ring has top / mid / bottom on the center half
+    for ring in rings:
+        x = ring["x"]
+        z = ring["z"]
+        h = ring["h"]
+        w = ring["w"]
+
+        verts = [
+            bm.verts.new((x, 0.0, z + h * 0.95)),     # top center
+            bm.verts.new((x, w,   z + h * 0.35)),     # upper side
+            bm.verts.new((x, w,   z - h * 0.35)),     # lower side
+            bm.verts.new((x, 0.0, z - h * 0.98)),     # bottom center
+        ]
+        ring_verts.append(verts)
+
+    bm.verts.ensure_lookup_table()
+
+    # connect body rings
+    for i in range(len(ring_verts) - 1):
+        a = ring_verts[i]
+        b = ring_verts[i + 1]
+
+        for j in range(3):
+            try:
+                bm.faces.new((a[j], b[j], b[j + 1], a[j + 1]))
+            except ValueError:
+                pass
+
+    # close nose
+    nose = bm.verts.new((-2.72 * scale, 0.0, 0.0))
+    bm.verts.ensure_lookup_table()
+    first = ring_verts[0]
+    for j in range(3):
+        try:
+            bm.faces.new((nose, first[j], first[j + 1]))
+        except ValueError:
+            pass
+
+    # tail fin as proper mesh, not cones
+    tail_top = bm.verts.new((2.85 * scale, 0.0,  1.18 * scale))
+    tail_mid = bm.verts.new((3.20 * scale, 0.0,  0.00 * scale))
+    tail_bot = bm.verts.new((2.85 * scale, 0.0, -1.18 * scale))
+
+    tail_side_top = bm.verts.new((2.65 * scale, 0.18 * scale,  0.75 * scale))
+    tail_side_mid = bm.verts.new((2.95 * scale, 0.20 * scale,  0.00 * scale))
+    tail_side_bot = bm.verts.new((2.65 * scale, 0.18 * scale, -0.75 * scale))
+
+    last = ring_verts[-1]
+
+    tail_pairs = [
+        (last[0], tail_top, tail_side_top, last[1]),
+        (last[1], tail_side_top, tail_side_mid, last[2]),
+        (last[2], tail_side_mid, tail_side_bot, last[3]),
+        (tail_top, tail_mid, tail_side_mid, tail_side_top),
+        (tail_side_mid, tail_mid, tail_bot, tail_side_bot),
+    ]
+    for face in tail_pairs:
+        try:
+            bm.faces.new(face)
+        except ValueError:
+            pass
+
+    # dorsal fin as mesh
+    dorsal_front = bm.verts.new((-0.55 * scale, 0.0, 1.18 * scale))
+    dorsal_peak  = bm.verts.new(( 0.25 * scale, 0.0, 1.78 * scale))
+    dorsal_back  = bm.verts.new(( 1.05 * scale, 0.0, 1.28 * scale))
+    dorsal_side  = bm.verts.new(( 0.20 * scale, 0.16 * scale, 1.32 * scale))
+
+    for face in (
+        (dorsal_front, dorsal_peak, dorsal_side),
+        (dorsal_side, dorsal_peak, dorsal_back),
+    ):
+        try:
+            bm.faces.new(face)
+        except ValueError:
+            pass
+
+    # ventral fin as mesh
+    ventral_front = bm.verts.new((-0.20 * scale, 0.0, -0.98 * scale))
+    ventral_peak  = bm.verts.new(( 0.35 * scale, 0.0, -1.35 * scale))
+    ventral_back  = bm.verts.new(( 0.92 * scale, 0.0, -1.00 * scale))
+    ventral_side  = bm.verts.new(( 0.30 * scale, 0.12 * scale, -1.02 * scale))
+
+    for face in (
+        (ventral_front, ventral_side, ventral_peak),
+        (ventral_side, ventral_back, ventral_peak),
+    ):
+        try:
+            bm.faces.new(face)
+        except ValueError:
+            pass
+
+    # pectoral fin on one side; mirror creates the other
+    pectoral_root_a = bm.verts.new((-1.10 * scale, 0.32 * scale,  0.15 * scale))
+    pectoral_root_b = bm.verts.new((-0.80 * scale, 0.34 * scale, -0.05 * scale))
+    pectoral_tip    = bm.verts.new((-1.45 * scale, 1.05 * scale, -0.08 * scale))
+
+    for face in (
+        (pectoral_root_a, pectoral_tip, pectoral_root_b),
+    ):
+        try:
+            bm.faces.new(face)
+        except ValueError:
+            pass
+
+    bm.normal_update()
+    bm.to_mesh(mesh)
+    bm.free()
+
+    # -------- modifiers --------
+    mirror = fish.modifiers.new(name="Mirror", type="MIRROR")
+    mirror.use_axis[0] = False
+    mirror.use_axis[1] = True
+    mirror.use_axis[2] = False
+    mirror.use_clip = True
+    mirror.merge_threshold = 0.001
+
+    solidify = fish.modifiers.new(name="Solidify", type="SOLIDIFY")
+    solidify.thickness = 0.10 * scale
+    solidify.offset = 0.0
+
+    bevel = fish.modifiers.new(name="Bevel", type="BEVEL")
+    bevel.width = 0.05 * scale
+    bevel.segments = 2
+
+    subsurf = fish.modifiers.new(name="Subsurf", type="SUBSURF")
+    subsurf.levels = 2
+    subsurf.render_levels = 2
+
+    # apply only mirror + solidify + bevel; keep subsurf live until after shape tweaks
+    apply_modifier(fish, "Mirror")
+    apply_modifier(fish, "Solidify")
+    apply_modifier(fish, "Bevel")
+    apply_modifier(fish, "Subsurf")
+
+    # light smoothing / cleanup
     shade_smooth(fish)
 
-    # --- STRIPES (optional) ---
-    for xpos in (-1.5 * scale, 0.0 * scale, 1.2 * scale):
-        bpy.ops.mesh.primitive_cube_add(location=(xpos, 0, 0))
-        cutter = bpy.context.active_object
-        cutter.scale = (0.25 * scale, 3.0 * scale, 2.0 * scale)
-
-        mod = fish.modifiers.new(name="StripeCut", type="BOOLEAN")
-        mod.operation = "DIFFERENCE"
-        mod.object = cutter
-        apply_modifier(fish, mod.name)
-
-        bpy.data.objects.remove(cutter, do_unlink=True)
-
-    shade_smooth(fish)
-
-    return fish, (0, 0, 0.3 * scale), 1.4 * scale
+    return fish, (0.10 * scale, 0.0, 0.0), 1.35 * scale
 
 def create_shape(params):
     shape = params["shape_family"]
