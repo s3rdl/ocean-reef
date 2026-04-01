@@ -1,8 +1,12 @@
 from __future__ import annotations
 
+import base64
+import binascii
 import json
 import math
 import mimetypes
+import os
+import secrets
 import shutil
 import subprocess
 import tempfile
@@ -36,6 +40,60 @@ for directory in (DATA_DIR, GENERATED_DIR, OUTPUT_DIR, BLENDER_DIR):
 (APP_DIR / "templates").mkdir(parents=True, exist_ok=True)
 
 app = FastAPI(title="Ocean Prototype UI")
+
+BASIC_AUTH_USERNAME = os.getenv("OCEAN_UI_USERNAME", "oceanreef")
+BASIC_AUTH_PASSWORD = os.getenv("OCEAN_UI_PASSWORD", "greenpeace")
+
+
+def _basic_auth_unauthorized() -> Response:
+    return Response(
+        status_code=401,
+        headers={"WWW-Authenticate": 'Basic realm="Ocean Reef Prototype UI"'},
+    )
+
+
+def _basic_auth_service_unavailable() -> JSONResponse:
+    return JSONResponse(
+        {
+            "error": "Basic auth is enabled but credentials are not configured.",
+            "detail": "Set OCEAN_UI_USERNAME and OCEAN_UI_PASSWORD before starting the app.",
+        },
+        status_code=503,
+        headers={"Cache-Control": "no-store"},
+    )
+
+
+def _is_basic_auth_valid(request: Request) -> bool:
+    auth_header = request.headers.get("Authorization", "")
+    if not auth_header.startswith("Basic "):
+        return False
+
+    token = auth_header[6:].strip()
+    try:
+        decoded = base64.b64decode(token).decode("utf-8")
+    except (binascii.Error, UnicodeDecodeError):
+        return False
+
+    username, sep, password = decoded.partition(":")
+    if not sep:
+        return False
+
+    return secrets.compare_digest(username, BASIC_AUTH_USERNAME) and secrets.compare_digest(password, BASIC_AUTH_PASSWORD)
+
+
+@app.middleware("http")
+async def basic_auth_middleware(request: Request, call_next):
+    if request.url.path == "/favicon.ico":
+        return await call_next(request)
+
+    if not BASIC_AUTH_USERNAME or not BASIC_AUTH_PASSWORD:
+        return _basic_auth_service_unavailable()
+
+    if not _is_basic_auth_valid(request):
+        return _basic_auth_unauthorized()
+
+    return await call_next(request)
+
 
 templates = Jinja2Templates(directory=str(APP_DIR / "templates"))
 
