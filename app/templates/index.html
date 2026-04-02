@@ -25,12 +25,42 @@
 
     * { box-sizing: border-box; }
 
-    body {
-      margin: 0;
-      font-family: Inter, system-ui, sans-serif;
-      background: var(--bg);
-      color: var(--text);
-    }
+
+body {
+    margin: 0;
+    min-height: 100vh;
+
+    background:
+        radial-gradient(
+            circle at 20% 8%,
+            rgba(255, 180, 200, 0.25),
+            transparent 40%
+        ),
+        linear-gradient(
+            to bottom,
+            #eaf6ff 0%,
+            #d4efff 25%,
+            #a6ddff 60%,
+            #008fd5 100%
+        );
+
+    background-attachment: fixed;
+}    
+
+body::after {
+    content: "";
+    position: fixed;
+    inset: 0;
+    pointer-events: none;
+
+    background: linear-gradient(
+        to bottom,
+        rgba(255,255,255,0.2),
+        rgba(0,0,0,0.1)
+    );
+
+    mix-blend-mode: soft-light;
+}
 
     .wrap {
       max-width: 1380px;
@@ -172,6 +202,42 @@
       min-height: 120px;
     }
 
+.preview-card::before {
+    content: "";
+    position: absolute;
+    inset: 0;
+    border-radius: 18px;
+
+    background: radial-gradient(
+        circle at 50% 0%,
+        rgba(255, 255, 255, 0.25),
+        transparent 60%
+    );
+
+    pointer-events: none;
+}
+
+.preview-card {
+    position: relative;
+    background: rgba(255, 255, 255, 0.65); /* etwas weniger transparent */
+    backdrop-filter: blur(10px);
+    -webkit-backdrop-filter: blur(10px);
+
+    border-radius: 18px;
+    border: 1px solid rgba(255, 255, 255, 0.5);
+
+    box-shadow:
+        0 12px 40px rgba(0, 0, 0, 0.12),
+        inset 0 1px 0 rgba(255, 255, 255, 0.7);
+
+    padding: 20px;
+}
+
+.preview-card img {
+    border-radius: 12px;
+    box-shadow: 0 6px 20px rgba(0, 0, 0, 0.15);
+}
+
     .preview-meta {
       display: flex;
       justify-content: space-between;
@@ -207,6 +273,30 @@
       border: 1px solid #dbe3ef;
     }
 
+.card, .panel, .box {
+    background: rgba(255, 255, 255, 0.55);
+    backdrop-filter: blur(12px);
+    -webkit-backdrop-filter: blur(12px);
+
+    border-radius: 16px;
+    border: 1px solid rgba(255, 255, 255, 0.4);
+
+    box-shadow:
+        0 8px 30px rgba(0, 0, 0, 0.08),
+        inset 0 1px 0 rgba(255, 255, 255, 0.6);
+
+    padding: 16px;
+}
+
+.card:hover, .panel:hover {
+    transform: translateY(-2px);
+    box-shadow:
+        0 12px 40px rgba(0, 0, 0, 0.12),
+        inset 0 1px 0 rgba(255, 255, 255, 0.7);
+
+    transition: all 0.2s ease;
+}
+
     .progress-bar {
       width: 0%;
       height: 100%;
@@ -218,6 +308,43 @@
       .layout {
         grid-template-columns: 1fr;
       }
+
+.preview-wrapper {
+    position: relative;
+    display: inline-block;
+}
+
+.preview-wrapper img {
+    display: block;
+    border-radius: 12px;
+}
+
+.preview-copyright {
+    position: absolute;
+    bottom: 8px;
+    right:  26px;
+
+    font-size: 12px;
+    color: rgba(255, 255, 255, 0.9);
+
+    background: none;
+    padding: 0px 0p0;
+    border-radius: 6px;
+
+    backdrop-filter: none;
+
+    white-space: nowrap;      /* 🔥 verhindert Zeilenumbruch */
+}
+
+@media (max-width: 600px) {
+    .preview-copyright {
+        font-size: 11px;
+        padding: 3px 8px;
+        bottom: 6px;
+        right: 6px;
+    }
+}
+
     }
   </style>
 </head>
@@ -294,6 +421,9 @@
           <div class="hint">
             Server-rendered PNG preview
           </div>
+<div class="preview-wrapper">
+    <div class="preview-copyright">© by _srdl</div>
+</div>
         </div>
 
         <img id="preview-image" alt="Generated preview">
