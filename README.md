@@ -86,11 +86,17 @@ uvicorn app.main:app --host 0.0.0.0 --port 8000
 
 ## 📦 Requirements
 
+### Linux (headless/server)
 ```bash
 sudo apt-get install -y openscad xvfb blender
 ```
 
-Python:
+### macOS (local dev)
+```bash
+brew install --cask openscad blender
+```
+
+Python (3.10+ recommended):
 ```bash
 python3 -m venv .venv
 source .venv/bin/activate
@@ -138,6 +144,7 @@ SCAD → PNG directly
 
 - Seaweed still heavier than other shapes
 - Blender fish still stylistically evolving
+- Blender shader sockets can differ across Blender versions (for example `Specular` vs `Specular IOR Level`); the generator now handles both names for compatibility
 - No persistence (jobs in RAM)
 
 ---

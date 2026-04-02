@@ -74,12 +74,23 @@ def set_scene_defaults():
     if world is None:
         world = bpy.data.worlds.new("World")
     scene.world = world
-    world.use_nodes = True
+    node_tree = world.node_tree
+    if node_tree is None:
+        try:
+            world.use_nodes = True
+        except Exception:
+            pass
+        node_tree = world.node_tree
 
-    bg = world.node_tree.nodes.get("Background")
-    if bg:
-        bg.inputs[0].default_value = (0.97, 0.98, 1.0, 1.0)
-        bg.inputs[1].default_value = 0.9
+    if node_tree is not None:
+        bg = node_tree.nodes.get("Background")
+        if bg:
+            color_socket = bg.inputs.get("Color") or (bg.inputs[0] if len(bg.inputs) > 0 else None)
+            strength_socket = bg.inputs.get("Strength") or (bg.inputs[1] if len(bg.inputs) > 1 else None)
+            if color_socket is not None:
+                color_socket.default_value = (0.97, 0.98, 1.0, 1.0)
+            if strength_socket is not None:
+                strength_socket.default_value = 0.9
 
 
 def ensure_stl_export():
@@ -179,13 +190,29 @@ def create_material(name: str, base_color):
         return mat
 
     mat = bpy.data.materials.new(name=name)
-    mat.use_nodes = True
+    node_tree = mat.node_tree
+    if node_tree is None:
+        try:
+            mat.use_nodes = True
+        except Exception:
+            pass
+        node_tree = mat.node_tree
 
-    bsdf = mat.node_tree.nodes.get("Principled BSDF")
+    if node_tree is None:
+        return mat
+
+    bsdf = node_tree.nodes.get("Principled BSDF")
     if bsdf:
-        bsdf.inputs["Base Color"].default_value = base_color
-        bsdf.inputs["Roughness"].default_value = 0.55
-        bsdf.inputs["Specular"].default_value = 0.35
+        base_color_socket = bsdf.inputs.get("Base Color")
+        roughness_socket = bsdf.inputs.get("Roughness")
+        specular_socket = bsdf.inputs.get("Specular IOR Level") or bsdf.inputs.get("Specular")
+
+        if base_color_socket is not None:
+            base_color_socket.default_value = base_color
+        if roughness_socket is not None:
+            roughness_socket.default_value = 0.55
+        if specular_socket is not None:
+            specular_socket.default_value = 0.35
 
     return mat
 

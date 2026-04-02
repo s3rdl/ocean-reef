@@ -7,6 +7,7 @@ import math
 import mimetypes
 import os
 import secrets
+import sys
 import time 
 import shutil
 import subprocess
@@ -136,7 +137,7 @@ PRESETS = {
 }
 
 SHAPE_FAMILIES = {
-    "coral": "Coral (experimental / slow)",
+    "coral": "Coral",
     "starfish": "Starfish",
     "seaweed": "Seaweed",
     "clownfish": "Clownfish",
@@ -378,12 +379,23 @@ def set_scene_defaults():
     if world is None:
         world = bpy.data.worlds.new("World")
     scene.world = world
-    world.use_nodes = True
+    node_tree = world.node_tree
+    if node_tree is None:
+        try:
+            world.use_nodes = True
+        except Exception:
+            pass
+        node_tree = world.node_tree
 
-    bg = world.node_tree.nodes.get("Background")
-    if bg:
-        bg.inputs[0].default_value = (0.97, 0.98, 1.0, 1.0)
-        bg.inputs[1].default_value = 0.9
+    if node_tree is not None:
+        bg = node_tree.nodes.get("Background")
+        if bg:
+            color_socket = bg.inputs.get("Color") or (bg.inputs[0] if len(bg.inputs) > 0 else None)
+            strength_socket = bg.inputs.get("Strength") or (bg.inputs[1] if len(bg.inputs) > 1 else None)
+            if color_socket is not None:
+                color_socket.default_value = (0.97, 0.98, 1.0, 1.0)
+            if strength_socket is not None:
+                strength_socket.default_value = 0.9
 
 
 def ensure_stl_export():
@@ -483,13 +495,29 @@ def create_material(name: str, base_color):
         return mat
 
     mat = bpy.data.materials.new(name=name)
-    mat.use_nodes = True
+    node_tree = mat.node_tree
+    if node_tree is None:
+        try:
+            mat.use_nodes = True
+        except Exception:
+            pass
+        node_tree = mat.node_tree
 
-    bsdf = mat.node_tree.nodes.get("Principled BSDF")
+    if node_tree is None:
+        return mat
+
+    bsdf = node_tree.nodes.get("Principled BSDF")
     if bsdf:
-        bsdf.inputs["Base Color"].default_value = base_color
-        bsdf.inputs["Roughness"].default_value = 0.55
-        bsdf.inputs["Specular"].default_value = 0.35
+        base_color_socket = bsdf.inputs.get("Base Color")
+        roughness_socket = bsdf.inputs.get("Roughness")
+        specular_socket = bsdf.inputs.get("Specular IOR Level") or bsdf.inputs.get("Specular")
+
+        if base_color_socket is not None:
+            base_color_socket.default_value = base_color
+        if roughness_socket is not None:
+            roughness_socket.default_value = 0.55
+        if specular_socket is not None:
+            specular_socket.default_value = 0.35
 
     return mat
 
@@ -1087,7 +1115,11 @@ def run_blender(params_path: Path, out_stl: Path | None, out_png: Path | None) -
     try:
         completed = subprocess.run(cmd, capture_output=True, text=True, check=False)
     except FileNotFoundError:
-        return False, "Blender not found in PATH. Install it with: sudo apt install blender -y"
+        if sys.platform == "darwin":
+            return False, "Blender not found in PATH. Install Blender (for example: brew install --cask blender)."
+        if sys.platform.startswith("linux"):
+            return False, "Blender not found in PATH. Install it with: sudo apt-get install -y blender"
+        return False, "Blender not found in PATH. Install Blender and make sure the 'blender' command is available."
 
     stderr = (completed.stderr or "").strip()
     stdout = (completed.stdout or "").strip()
@@ -1111,19 +1143,26 @@ def run_openscad(scad_path: Path, stl_path: Path) -> tuple[bool, str]:
     try:
         completed = subprocess.run(cmd, capture_output=True, text=True, check=False)
     except FileNotFoundError:
-        return False, "OpenSCAD not found in PATH."
+        if sys.platform == "darwin":
+            return False, "OpenSCAD not found in PATH. Install it (for example: brew install --cask openscad)."
+        if sys.platform.startswith("linux"):
+            return False, "OpenSCAD not found in PATH. Install it with: sudo apt-get install -y openscad"
+        return False, "OpenSCAD not found in PATH. Install OpenSCAD and ensure 'openscad' is available."
 
     if completed.returncode != 0:
         return False, (completed.stderr or completed.stdout or "OpenSCAD failed").strip()
 
     return True, ""
 
-def render_png_from_scad(scad_path: Path, png_path: Path) -> tuple[bool, str]:
-    cmd = [
-        "xvfb-run",
-        "-a",
-        "-s",
-        "-screen 0 1600x1200x24",
+def _openscad_png_command(scad_path: Path, png_path: Path) -> tuple[list[str] | None, str | None]:
+    if shutil.which("openscad") is None:
+        if sys.platform == "darwin":
+            return None, "OpenSCAD not found in PATH. Install it (for example: brew install --cask openscad)."
+        if sys.platform.startswith("linux"):
+            return None, "OpenSCAD not found in PATH. Install it with: sudo apt-get install -y openscad"
+        return None, "OpenSCAD not found in PATH. Install OpenSCAD and ensure 'openscad' is available."
+
+    openscad_cmd = [
         "openscad",
         "--render",
         "--imgsize=1600,1200",
@@ -1132,13 +1171,32 @@ def render_png_from_scad(scad_path: Path, png_path: Path) -> tuple[bool, str]:
         str(scad_path),
     ]
 
+    is_linux = sys.platform.startswith("linux")
+    has_display = bool(os.getenv("DISPLAY") or os.getenv("WAYLAND_DISPLAY"))
+
+    if is_linux and not has_display:
+        xvfb = shutil.which("xvfb-run")
+        if xvfb is None:
+            return (
+                None,
+                "Headless Linux environment detected without X display. Install xvfb-run: sudo apt-get install -y xvfb",
+            )
+        return [xvfb, "-a", "-s", "-screen 0 1600x1200x24", *openscad_cmd], None
+
+    return openscad_cmd, None
+
+
+def render_png_from_scad(scad_path: Path, png_path: Path) -> tuple[bool, str]:
+    cmd, setup_error = _openscad_png_command(scad_path, png_path)
+    if setup_error:
+        return False, setup_error
+
+    assert cmd is not None
+
     try:
         completed = subprocess.run(cmd, capture_output=True, text=True, check=False)
-    except FileNotFoundError as exc:
-        missing = str(exc)
-        if "xvfb-run" in missing:
-            return False, "xvfb-run not found. Install: sudo apt-get install -y xvfb"
-        return False, "OpenSCAD not found in PATH."
+    except FileNotFoundError:
+        return False, "OpenSCAD command failed to start. Verify OpenSCAD installation and PATH."
 
     if completed.returncode != 0:
         return False, (completed.stderr or completed.stdout or "PNG render failed").strip()
@@ -1364,153 +1422,6 @@ def process_openscad_job(job_id: str, request_data: dict[str, Any], agg: dict[st
         finally:
             shutil.rmtree(temp_dir, ignore_errors=True)
 
-def process_blender_job(job_id: str, request_data: dict[str, Any], agg: dict[str, Any], summary: dict[str, Any]) -> None:
-    demo_file = request_data["demo_file"]
-    export_mode = request_data["export_mode"]
-    source_max = int(request_data["source_max"])
-    base_radius_multiplier = float(request_data["base_radius_multiplier"])
-    core_height_multiplier = float(request_data["core_height_multiplier"])
-    branch_density_multiplier = float(request_data["branch_density_multiplier"])
-    branch_thickness_multiplier = float(request_data["branch_thickness_multiplier"])
-    shape_family = request_data["shape_family"]
-
-    shape_params = build_shape_params(
-        agg=agg,
-        source_max=source_max,
-        base_radius_multiplier=base_radius_multiplier,
-        core_height_multiplier=core_height_multiplier,
-        branch_density_multiplier=branch_density_multiplier,
-        branch_thickness_multiplier=branch_thickness_multiplier,
-        shape_family=shape_family,
-    )
-
-    title = f"Ocean Reef Prototype - {demo_file} - {shape_family}"
-
-    params_name = f"reef_{job_id}_params.json"
-    main_stl_name = f"reef_{job_id}.stl"
-    main_png_name = f"reef_{job_id}.png"
-
-    params_path = GENERATED_DIR / params_name
-    main_stl_path = OUTPUT_DIR / main_stl_name
-    main_png_path = OUTPUT_DIR / main_png_name
-
-    blender_payload = {
-        "title": title,
-        "dataset_name": demo_file,
-        "shape_family": shape_family,
-        "shape_params": shape_params,
-        "summary": summary,
-    }
-
-    params_path.write_text(json.dumps(blender_payload, indent=2, ensure_ascii=False), encoding="utf-8")
-
-    result: dict[str, Any] = {
-        "job_id": job_id,
-        "dataset_name": demo_file,
-        "summary": summary,
-        "preset": request_data["preset"],
-        "export_mode": export_mode,
-        "shape_family": shape_family,
-        "params_url": f"/generated/{params_name}",
-        "stl_url": None,
-        "png_url": None,
-        "zip_url": None,
-        "region_files": [],
-    }
-
-    # --------------------------------------------------
-    # SCAD ONLY → wir erzeugen kurz ein STL + PNG
-    # --------------------------------------------------
-    if export_mode == "scad_only":
-        update_job(job_id, message="Generating preview via STL...")
-
-        temp_stl = OUTPUT_DIR / f"_tmp_{job_id}.stl"
-
-        ok, message = run_blender(params_path, temp_stl, None)
-        if not ok:
-            update_job(job_id, status="error", message=message)
-            return
-
-        ok, message = render_png_from_stl_with_openscad(temp_stl, main_png_path)
-        if not ok:
-            update_job(job_id, status="error", message=message)
-            return
-
-        result["png_url"] = f"/output/{main_png_name}"
-
-        try:
-            temp_stl.unlink(missing_ok=True)
-        except Exception:
-            pass
-
-        finalize_job(job_id, status="done", message="Preview generated.", result=result)
-        return
-
-    # --------------------------------------------------
-    # SINGLE STL → Standardfall
-    # --------------------------------------------------
-    if export_mode == "single_stl":
-        update_job(job_id, message="Rendering STL via Blender...")
-
-        ok, message = run_blender(params_path, main_stl_path, None)
-        if not ok:
-            update_job(job_id, status="error", message=message)
-            return
-
-        result["stl_url"] = f"/output/{main_stl_name}"
-
-        update_job(job_id, message="Rendering PNG via OpenSCAD...")
-
-        ok, message = render_png_from_stl_with_openscad(main_stl_path, main_png_path)
-        if ok:
-            result["png_url"] = f"/output/{main_png_name}"
-        else:
-            result["png_warning"] = message
-
-        finalize_job(job_id, status="done", message="STL generated.", result=result)
-        return
-
-    # --------------------------------------------------
-    # ZIP MODE
-    # --------------------------------------------------
-    if export_mode == "separate_regions_zip":
-        update_job(job_id, message="Rendering bundle...")
-
-        zip_name = f"reef_bundle_{job_id}.zip"
-        zip_path = OUTPUT_DIR / zip_name
-
-        temp_dir = Path(tempfile.mkdtemp(prefix=f"reef_{job_id}_"))
-
-        try:
-            bundle_stl = temp_dir / main_stl_name
-            bundle_png = temp_dir / main_png_name
-
-            ok, message = run_blender(params_path, bundle_stl, None)
-            if not ok:
-                update_job(job_id, status="error", message=message)
-                return
-
-            ok, _ = render_png_from_stl_with_openscad(bundle_stl, bundle_png)
-
-            shutil.copy2(bundle_stl, main_stl_path)
-            result["stl_url"] = f"/output/{main_stl_name}"
-
-            if ok:
-                shutil.copy2(bundle_png, main_png_path)
-                result["png_url"] = f"/output/{main_png_name}"
-
-            with zipfile.ZipFile(zip_path, "w", compression=zipfile.ZIP_DEFLATED) as zf:
-                for file_path in temp_dir.glob("*"):
-                    zf.write(file_path, arcname=file_path.name)
-
-            result["zip_url"] = f"/output/{zip_name}"
-
-            finalize_job(job_id, status="done", message="ZIP generated.", result=result)
-            return
-
-        finally:
-            shutil.rmtree(temp_dir, ignore_errors=True)
-
 def render_png_from_stl_with_openscad(stl_path: Path, png_path: Path) -> tuple[bool, str]:
     wrapper_scad = GENERATED_DIR / f"_preview_{stl_path.stem}.scad"
 
@@ -1527,34 +1438,30 @@ preview_model();
 
     wrapper_scad.write_text(wrapper_code, encoding="utf-8")
 
-    cmd = [
-        "xvfb-run",
-        "-a",
-        "-s",
-        "-screen 0 1600x1200x24",
-        "openscad",
-        "--render",
-        "--imgsize=1600,1200",
-        "-o",
-        str(png_path),
-        str(wrapper_scad),
-    ]
-
     try:
-        completed = subprocess.run(cmd, capture_output=True, text=True, check=False)
-    except FileNotFoundError as exc:
-        missing = str(exc)
-        if "xvfb-run" in missing:
-            return False, "xvfb-run not found. Install it with: sudo apt-get install -y xvfb"
-        return False, "OpenSCAD not found in PATH."
+        cmd, setup_error = _openscad_png_command(wrapper_scad, png_path)
+        if setup_error:
+            return False, setup_error
 
-    if completed.returncode != 0:
-        return False, (completed.stderr or completed.stdout or "PNG render from STL failed").strip()
+        assert cmd is not None
 
-    if not png_path.exists() or png_path.stat().st_size == 0:
-        return False, "PNG render from STL produced no usable file."
+        try:
+            completed = subprocess.run(cmd, capture_output=True, text=True, check=False)
+        except FileNotFoundError:
+            return False, "OpenSCAD command failed to start. Verify OpenSCAD installation and PATH."
 
-    return True, ""
+        if completed.returncode != 0:
+            return False, (completed.stderr or completed.stdout or "PNG render from STL failed").strip()
+
+        if not png_path.exists() or png_path.stat().st_size == 0:
+            return False, "PNG render from STL produced no usable file."
+
+        return True, ""
+    finally:
+        try:
+            wrapper_scad.unlink(missing_ok=True)
+        except Exception:
+            pass
 
 def process_blender_job(job_id: str, request_data: dict[str, Any], agg: dict[str, Any], summary: dict[str, Any]) -> None:
     demo_file = request_data["demo_file"]
@@ -1987,7 +1894,17 @@ async def get_job(job_id: str) -> JSONResponse:
 
 @app.get("/output/{filename}")
 async def serve_output(filename: str):
-    path = OUTPUT_DIR / filename
+    candidate = Path(filename)
+    if candidate.is_absolute() or candidate.name != filename:
+        return JSONResponse({"error": "File not found."}, status_code=404)
+
+    output_root = OUTPUT_DIR.resolve()
+    path = (output_root / candidate).resolve()
+
+    try:
+        path.relative_to(output_root)
+    except ValueError:
+        return JSONResponse({"error": "File not found."}, status_code=404)
 
     if not path.exists() or not path.is_file():
         return JSONResponse({"error": "File not found."}, status_code=404)
