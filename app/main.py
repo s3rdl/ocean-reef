@@ -7,6 +7,7 @@ import math
 import mimetypes
 import os
 import secrets
+import time 
 import shutil
 import subprocess
 import tempfile
@@ -175,12 +176,12 @@ union() {
 """
 
 SCAD_SEAWEED = r"""
-$fn = 72;
+$fn = 36;
 
 // {{TITLE}}
 
 size_factor = {{SIZE_FACTOR}};
-blade_count = 5;
+blade_count = 4;
 blade_height = 92 * size_factor;
 base_radius = 14 * size_factor;
 
@@ -193,9 +194,9 @@ module segment_pair(x0, y0, z0, r0, x1, y1, z1, r1) {
 
 module blade(seed_angle=0, bend=1.0, spread=1.0) {
     union() {
-        for (i = [0:11]) {
-            z0 = i * blade_height / 12;
-            z1 = (i + 1) * blade_height / 12;
+        for (i = [0:8]) {
+            z0 = i * blade_height / 9;
+            z1 = (i + 1) * blade_height / 9;
 
             x0 = sin(seed_angle + i * 10) * (3.5 + i * 0.45) * bend * size_factor;
             x1 = sin(seed_angle + (i + 1) * 10) * (3.5 + (i + 1) * 0.45) * bend * size_factor;
@@ -1239,10 +1240,7 @@ def process_openscad_job(job_id: str, request_data: dict[str, Any], agg: dict[st
 
         result["png_url"] = f"/output/{main_png_name}"
 
-        update_job(
-            job_id,
-            status="done",
-            message="Preview generated.",
+        finalize_job(job_id, status="done", message="Preview generated.",
             result=result,
             summary=summary,
             progress=100,
@@ -1281,10 +1279,7 @@ def process_openscad_job(job_id: str, request_data: dict[str, Any], agg: dict[st
         else:
             result["png_warning"] = message
 
-        update_job(
-            job_id,
-            status="done",
-            message="STL generated.",
+        finalize_job(job_id, status="done", message="STL generated.",
             result=result,
             summary=summary,
             progress=100,
@@ -1358,10 +1353,7 @@ def process_openscad_job(job_id: str, request_data: dict[str, Any], agg: dict[st
             result["region_files"] = region_files
             result["zip_url"] = f"/output/{zip_name}"
 
-            update_job(
-                job_id,
-                status="done",
-                message="ZIP bundle generated.",
+            finalize_job(job_id, status="done", message="ZIP bundle generated.",
                 result=result,
                 summary=summary,
                 progress=100,
@@ -1451,7 +1443,7 @@ def process_blender_job(job_id: str, request_data: dict[str, Any], agg: dict[str
         except Exception:
             pass
 
-        update_job(job_id, status="done", message="Preview generated.", result=result)
+        finalize_job(job_id, status="done", message="Preview generated.", result=result)
         return
 
     # --------------------------------------------------
@@ -1475,7 +1467,7 @@ def process_blender_job(job_id: str, request_data: dict[str, Any], agg: dict[str
         else:
             result["png_warning"] = message
 
-        update_job(job_id, status="done", message="STL generated.", result=result)
+        finalize_job(job_id, status="done", message="STL generated.", result=result)
         return
 
     # --------------------------------------------------
@@ -1513,7 +1505,7 @@ def process_blender_job(job_id: str, request_data: dict[str, Any], agg: dict[str
 
             result["zip_url"] = f"/output/{zip_name}"
 
-            update_job(job_id, status="done", message="ZIP generated.", result=result)
+            finalize_job(job_id, status="done", message="ZIP generated.", result=result)
             return
 
         finally:
@@ -1676,10 +1668,7 @@ def process_blender_job(job_id: str, request_data: dict[str, Any], agg: dict[str
 
         result["png_url"] = f"/output/{main_png_name}"
 
-        update_job(
-            job_id,
-            status="done",
-            message="Preview generated.",
+        finalize_job(job_id, status="done", message="Preview generated.",
             result=result,
             summary=summary,
             progress=100,
@@ -1726,10 +1715,7 @@ def process_blender_job(job_id: str, request_data: dict[str, Any], agg: dict[str
         else:
             result["png_warning"] = message
 
-        update_job(
-            job_id,
-            status="done",
-            message="STL generated.",
+        finalize_job(job_id, status="done", message="STL generated.",
             result=result,
             summary=summary,
             progress=100,
@@ -1805,10 +1791,7 @@ def process_blender_job(job_id: str, request_data: dict[str, Any], agg: dict[str
             result["region_files"] = region_files
             result["zip_url"] = f"/output/{zip_name}"
 
-            update_job(
-                job_id,
-                status="done",
-                message="ZIP bundle generated.",
+            finalize_job(job_id, status="done", message="ZIP bundle generated.",
                 result=result,
                 summary=summary,
                 progress=100,
@@ -1828,6 +1811,23 @@ def process_blender_job(job_id: str, request_data: dict[str, Any], agg: dict[str
         stage="error",
         eta_seconds=None,
     )
+
+
+
+def finalize_job(job_id: str, status: str, message: str, **updates: Any) -> None:
+    job = get_job_record(job_id) or {}
+    started_at = job.get("started_at")
+    duration_seconds = None
+    if isinstance(started_at, (int, float)):
+        duration_seconds = round(time.time() - started_at, 2)
+
+    payload = {
+        "status": status,
+        "message": message,
+        "duration_seconds": duration_seconds,
+        **updates,
+    }
+    update_job(job_id, **payload)
 
 def process_job(job_id: str, request_data: dict[str, Any]) -> None:
     try:
@@ -1879,10 +1879,7 @@ def process_job(job_id: str, request_data: dict[str, Any]) -> None:
 
     except Exception as exc:
         traceback.print_exc()
-        update_job(
-            job_id,
-            status="error",
-            message=f"Unhandled server error: {exc}",
+        finalize_job(job_id, status="error", message=f"Unhandled server error: {exc}",
             error_type=type(exc).__name__,
             stage="error",
             eta_seconds=None,
@@ -1952,6 +1949,7 @@ async def generate(
             "eta_seconds": None,
             "result": None,
             "summary": None,
+            "started_at": time.time(),
             "created_at": datetime.now(timezone.utc).isoformat(),
         },
     )

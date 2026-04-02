@@ -455,6 +455,8 @@ body::after {
     var pollTimer = null;
     var pollErrorCount = 0;
     var maxPollErrors = 5;
+    var liveDurationTimer = null;
+    var currentJobStartedAt = null;
 
     function setStatus(text, kind) {
       statusBox.className = "status";
@@ -519,6 +521,51 @@ body::after {
       return secs + " sec";
     }
 
+    function formatPrettyDuration(seconds) {
+      seconds = Math.round(seconds);
+
+      var mins = Math.floor(seconds / 60);
+      var secs = seconds % 60;
+
+      if (mins > 0) {
+        return mins + " min " + secs + " sec";
+      }
+      return secs + " sec";
+    }
+
+    function stopLiveDuration() {
+      if (liveDurationTimer) {
+        clearInterval(liveDurationTimer);
+        liveDurationTimer = null;
+      }
+    }
+
+    function startLiveDuration(startedAtIso) {
+      stopLiveDuration();
+
+      if (!startedAtIso) {
+        currentJobStartedAt = null;
+        return;
+      }
+
+      var startedMs = Date.parse(startedAtIso);
+      if (isNaN(startedMs)) {
+        currentJobStartedAt = null;
+        return;
+      }
+
+      currentJobStartedAt = startedMs;
+
+      function tick() {
+        var now = Date.now();
+        var elapsedSeconds = Math.floor((now - currentJobStartedAt) / 1000);
+        etaLabel.textContent = "⏱ Elapsed time: " + formatPrettyDuration(elapsedSeconds);
+      }
+
+      tick();
+      liveDurationTimer = setInterval(tick, 1000);
+    }
+
     function updateProgress(data) {
       var progress = 0;
       var stage = "idle";
@@ -542,6 +589,7 @@ body::after {
     }
 
     function resetProgress() {
+      stopLiveDuration();
       progressBar.style.width = "0%";
       progressLabel.textContent = "No active job.";
       etaLabel.textContent = "Estimated time remaining: —";
@@ -820,6 +868,10 @@ body::after {
           setStatus(data.message || ("Job is " + data.status + "..."));
           setBusy(true);
 
+          if (data.created_at) {
+            startLiveDuration(data.created_at);
+          }
+
           var interval = data.status === "queued" ? 2500 : 3000;
 
           stopPolling();
@@ -830,9 +882,21 @@ body::after {
         }
 
         if (data.status === "done") {
-          setStatus(data.message || "Job finished.", "success");
+          var msg = data.message || "Job finished.";
+
+          if (data.duration_seconds) {
+            msg += " (" + formatPrettyDuration(data.duration_seconds) + ")";
+          }
+
+          setStatus(msg, "success");
           setBusy(false);
+          stopLiveDuration();
           updateProgress(data);
+
+          if (data.duration_seconds) {
+            etaLabel.textContent = "⏱ Total time: " + formatPrettyDuration(data.duration_seconds);
+          }
+
           stopPolling();
 
           var previewUrl = choosePreviewUrl(data.result);
@@ -848,7 +912,13 @@ body::after {
         if (data.status === "error") {
           setStatus(data.message || "Job failed.", "error");
           setBusy(false);
+          stopLiveDuration();
           updateProgress(data);
+
+          if (data.duration_seconds) {
+            etaLabel.textContent = "⏱ Total time: " + formatPrettyDuration(data.duration_seconds);
+          }
+
           stopPolling();
           setPreviewStatus("Preview unavailable because the job failed.");
           clearPreview();
