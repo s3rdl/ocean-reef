@@ -6,7 +6,7 @@ Phase D+ evolves the system into a **hybrid geometry pipeline** combining:
 
 ---
 
-## 🚀 What’s New (Extended)
+## 🚀 What’s New (Updated)
 
 ### 🧩 Hybrid Shape Pipeline
 - **OpenSCAD** → Starfish, Seaweed (fast + reliable previews)
@@ -15,18 +15,41 @@ Phase D+ evolves the system into a **hybrid geometry pipeline** combining:
 
 ---
 
-### 🖼 PNG Rendering (FIXED)
-- **All previews now generated via OpenSCAD**
-- Blender PNG rendering disabled (was producing grey images)
+### 🖼 PNG Rendering (STABLE)
+- All previews generated via OpenSCAD
+- Blender PNG disabled (was producing grey images)
 - STL → PNG via wrapper SCAD
+
+---
+
+### ⏱ Live Rendering Time (NEW)
+- UI shows **live elapsed rendering time**
+- Final **total render duration** shown after completion
+- Improves transparency for long-running jobs (especially Seaweed)
+
+---
+
+### 🐢 Performance Improvements (Seaweed)
+- Reduced `$fn`
+- Fewer blade segments
+- Reduced blade count
+
+→ Result: **massively faster STL generation**
+
+---
+
+### 🔐 Basic Authentication (NEW)
+- Simple HTTP Basic Auth added
+- Prevents public access to the UI
+- Suitable for quick internal deployments
 
 ---
 
 ### 🐟 Clownfish (Reworked)
 - Fully Blender-based mesh
 - Mirror + Subsurf workflow
-- No more primitive cones → proper mesh fins
-- Still WIP but now clearly “fish-like”
+- Proper mesh fins (no primitive cones)
+- Still evolving stylistically
 
 ---
 
@@ -40,7 +63,9 @@ Phase D+ evolves the system into a **hybrid geometry pipeline** combining:
 ### 📊 Job Status Improvements
 - progress (%)
 - stage (pipeline step)
-- better error visibility
+- live elapsed time
+- final duration
+- improved error visibility
 
 ---
 
@@ -98,7 +123,7 @@ uvicorn app.main:app --host 0.0.0.0 --port 8000
 
 ---
 
-## 🖼 Preview System (Important)
+## 🖼 Preview System
 
 ### Blender shapes
 1. Blender → STL
@@ -111,8 +136,8 @@ SCAD → PNG directly
 
 ## 🔧 Known Issues
 
-- Seaweed/Starfish depend on SCAD pipeline consistency
-- Blender shapes still stylistically evolving
+- Seaweed still heavier than other shapes
+- Blender fish still stylistically evolving
 - No persistence (jobs in RAM)
 
 ---
@@ -122,13 +147,14 @@ SCAD → PNG directly
 - Persist jobs
 - Improve fish topology (Nemo-style)
 - unify shading / preview look
-- optional GLB export again
+- optional GLB export
 
 ---
 
 ## 💥 TL;DR
 
-- Hybrid pipeline works
-- PNG previews stable again
-- Blender only used for geometry
-- System finally predictable again
+- Hybrid pipeline stable
+- PNG previews reliable
+- Live timing added
+- Performance improved
+- System feels like a real tool now
