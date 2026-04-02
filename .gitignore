@@ -5,3 +5,4 @@ generated/
 output/
 *.bak
 *.nbak
+.DS_Store
