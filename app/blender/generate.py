@@ -338,10 +338,20 @@ def create_coral(params):
     scale = params["size_factor"]
     density = params["density_factor"]
     thickness = params["thickness_factor"]
+    height = params.get("height_factor", 1.0)
+
+    footprint_scale = pow(scale, 1.16)
+    height_scale = pow(height, 1.14)
+    branch_thickness = max(0.75, thickness) * pow(scale, 0.86)
 
     objects = []
 
-    base = add_cylinder(location=(0, 0, 0.25 * scale), radius=1.35 * scale, depth=0.55 * scale, name="CoralBase")
+    base = add_cylinder(
+        location=(0, 0, 0.25 * height_scale),
+        radius=1.35 * footprint_scale,
+        depth=0.55 * height_scale,
+        name="CoralBase",
+    )
     base.scale = (1.0, 1.0, 0.65)
     objects.append(base)
 
@@ -350,23 +360,23 @@ def create_coral(params):
 
     for i in range(branch_count):
         angle = i * (2 * math.pi / branch_count)
-        outward = 0.18 * scale + (i % 3) * 0.12 * scale
+        outward = (0.18 + (i % 3) * 0.12) * footprint_scale
         x0 = math.cos(angle) * outward
         y0 = math.sin(angle) * outward
 
-        points = [(x0, y0, 0.25 * scale)]
-        branch_height = (3.0 + rng.random() * 2.2) * scale
+        points = [(x0, y0, 0.25 * height_scale)]
+        branch_height = (3.2 + rng.random() * 2.6) * height_scale
 
         for j in range(1, 5):
             t = j / 4.0
-            x = x0 + math.sin(angle * 0.7 + t * 1.5 + rng.random()) * (0.35 + 0.80 * t) * scale
-            y = y0 + math.cos(angle * 0.9 + t * 1.2 + rng.random()) * (0.25 + 0.70 * t) * scale
-            z = 0.25 * scale + branch_height * t
+            x = x0 + math.sin(angle * 0.7 + t * 1.5 + rng.random()) * (0.35 + 0.80 * t) * footprint_scale
+            y = y0 + math.cos(angle * 0.9 + t * 1.2 + rng.random()) * (0.25 + 0.70 * t) * footprint_scale
+            z = 0.25 * height_scale + branch_height * t
             points.append((x, y, z))
 
         curve = add_bezier_curve(
             points,
-            bevel_depth=max(0.11 * thickness * scale, 0.075),
+            bevel_depth=max(0.09 * branch_thickness, 0.07),
             resolution=14,
             name=f"CoralBranch_{i}",
         )
@@ -378,12 +388,12 @@ def create_coral(params):
                 [
                     (bx, by, bz),
                     (
-                        bx + math.sin(angle + 1.3) * 0.75 * scale,
-                        by + math.cos(angle + 1.1) * 0.55 * scale,
-                        bz + 1.0 * scale,
+                        bx + math.sin(angle + 1.3) * 0.75 * footprint_scale,
+                        by + math.cos(angle + 1.1) * 0.55 * footprint_scale,
+                        bz + 1.0 * height_scale,
                     ),
                 ],
-                bevel_depth=max(0.07 * thickness * scale, 0.045),
+                bevel_depth=max(0.06 * branch_thickness, 0.045),
                 resolution=10,
                 name=f"CoralTip_{i}",
             )
@@ -395,8 +405,8 @@ def create_coral(params):
         convert_to_mesh(obj)
 
     coral = join_objects(objects, name="Coral")
-    finalize_mesh(coral, remesh_voxel=max(0.10 * scale, 0.07), decimate_ratio=0.95)
-    return coral, (0, 0, 2.2 * scale), 1.25 * scale
+    finalize_mesh(coral, remesh_voxel=max(0.09 * branch_thickness, 0.07), decimate_ratio=0.95)
+    return coral, (0, 0, 2.2 * height_scale), 0.95 + 0.52 * pow(scale, 0.74)
 
 def create_cartoon_fish_body(scale: float):
     mesh = bpy.data.meshes.new("CartoonFishBody")

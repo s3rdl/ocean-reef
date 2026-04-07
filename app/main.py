@@ -182,9 +182,12 @@ $fn = 36;
 // {{TITLE}}
 
 size_factor = {{SIZE_FACTOR}};
+footprint_scale = pow(size_factor, 1.20);
+height_scale = pow(size_factor, 1.32);
+thickness_scale = pow(size_factor, 0.92);
 blade_count = 4;
-blade_height = 92 * size_factor;
-base_radius = 14 * size_factor;
+blade_height = 92 * height_scale;
+base_radius = 12.5 * thickness_scale;
 
 module segment_pair(x0, y0, z0, r0, x1, y1, z1, r1) {
     hull() {
@@ -199,14 +202,14 @@ module blade(seed_angle=0, bend=1.0, spread=1.0) {
             z0 = i * blade_height / 9;
             z1 = (i + 1) * blade_height / 9;
 
-            x0 = sin(seed_angle + i * 10) * (3.5 + i * 0.45) * bend * size_factor;
-            x1 = sin(seed_angle + (i + 1) * 10) * (3.5 + (i + 1) * 0.45) * bend * size_factor;
+            x0 = sin(seed_angle + i * 10) * (3.5 + i * 0.45) * bend * footprint_scale;
+            x1 = sin(seed_angle + (i + 1) * 10) * (3.5 + (i + 1) * 0.45) * bend * footprint_scale;
 
-            y0 = cos(seed_angle + i * 7) * 1.2 * spread * size_factor;
-            y1 = cos(seed_angle + (i + 1) * 7) * 1.2 * spread * size_factor;
+            y0 = cos(seed_angle + i * 7) * 1.2 * spread * footprint_scale;
+            y1 = cos(seed_angle + (i + 1) * 7) * 1.2 * spread * footprint_scale;
 
-            r0 = max((7.0 - i * 0.42) * size_factor, 1.45 * size_factor);
-            r1 = max((7.0 - (i + 1) * 0.42) * size_factor, 1.10 * size_factor);
+            r0 = max((7.0 - i * 0.42) * thickness_scale, 1.45 * thickness_scale);
+            r1 = max((7.0 - (i + 1) * 0.42) * thickness_scale, 1.10 * thickness_scale);
 
             segment_pair(x0, y0, z0, r0, x1, y1, z1, r1);
         }
@@ -215,8 +218,8 @@ module blade(seed_angle=0, bend=1.0, spread=1.0) {
 
 module holdfast() {
     hull() {
-        cylinder(h=6 * size_factor, r=base_radius);
-        translate([0, 0, 2 * size_factor]) cylinder(h=4 * size_factor, r=base_radius * 0.78);
+        cylinder(h=6 * thickness_scale, r=base_radius);
+        translate([0, 0, 2 * thickness_scale]) cylinder(h=4 * thickness_scale, r=base_radius * 0.78);
     }
 }
 
@@ -225,7 +228,7 @@ union() {
 
     for (i = [0:blade_count - 1]) {
         rotate([0, 0, i * (360 / blade_count)])
-            translate([base_radius * 0.30, 0, 3.0 * size_factor])
+            translate([base_radius * 0.30, 0, 3.0 * thickness_scale])
                 blade(seed_angle=i * 19, bend=0.90 + 0.06 * i, spread=0.85 + 0.05 * i);
     }
 }
@@ -643,10 +646,20 @@ def create_coral(params):
     scale = params["size_factor"]
     density = params["density_factor"]
     thickness = params["thickness_factor"]
+    height = params.get("height_factor", 1.0)
+
+    footprint_scale = pow(scale, 1.16)
+    height_scale = pow(height, 1.14)
+    branch_thickness = max(0.75, thickness) * pow(scale, 0.86)
 
     objects = []
 
-    base = add_cylinder(location=(0, 0, 0.25 * scale), radius=1.35 * scale, depth=0.55 * scale, name="CoralBase")
+    base = add_cylinder(
+        location=(0, 0, 0.25 * height_scale),
+        radius=1.35 * footprint_scale,
+        depth=0.55 * height_scale,
+        name="CoralBase",
+    )
     base.scale = (1.0, 1.0, 0.65)
     objects.append(base)
 
@@ -655,23 +668,23 @@ def create_coral(params):
 
     for i in range(branch_count):
         angle = i * (2 * math.pi / branch_count)
-        outward = 0.18 * scale + (i % 3) * 0.12 * scale
+        outward = (0.18 + (i % 3) * 0.12) * footprint_scale
         x0 = math.cos(angle) * outward
         y0 = math.sin(angle) * outward
 
-        points = [(x0, y0, 0.25 * scale)]
-        branch_height = (3.0 + rng.random() * 2.2) * scale
+        points = [(x0, y0, 0.25 * height_scale)]
+        branch_height = (3.2 + rng.random() * 2.6) * height_scale
 
         for j in range(1, 5):
             t = j / 4.0
-            x = x0 + math.sin(angle * 0.7 + t * 1.5 + rng.random()) * (0.35 + 0.80 * t) * scale
-            y = y0 + math.cos(angle * 0.9 + t * 1.2 + rng.random()) * (0.25 + 0.70 * t) * scale
-            z = 0.25 * scale + branch_height * t
+            x = x0 + math.sin(angle * 0.7 + t * 1.5 + rng.random()) * (0.35 + 0.80 * t) * footprint_scale
+            y = y0 + math.cos(angle * 0.9 + t * 1.2 + rng.random()) * (0.25 + 0.70 * t) * footprint_scale
+            z = 0.25 * height_scale + branch_height * t
             points.append((x, y, z))
 
         curve = add_bezier_curve(
             points,
-            bevel_depth=max(0.11 * thickness * scale, 0.075),
+            bevel_depth=max(0.09 * branch_thickness, 0.07),
             resolution=14,
             name=f"CoralBranch_{i}",
         )
@@ -683,12 +696,12 @@ def create_coral(params):
                 [
                     (bx, by, bz),
                     (
-                        bx + math.sin(angle + 1.3) * 0.75 * scale,
-                        by + math.cos(angle + 1.1) * 0.55 * scale,
-                        bz + 1.0 * scale,
+                        bx + math.sin(angle + 1.3) * 0.75 * footprint_scale,
+                        by + math.cos(angle + 1.1) * 0.55 * footprint_scale,
+                        bz + 1.0 * height_scale,
                     ),
                 ],
-                bevel_depth=max(0.07 * thickness * scale, 0.045),
+                bevel_depth=max(0.06 * branch_thickness, 0.045),
                 resolution=10,
                 name=f"CoralTip_{i}",
             )
@@ -700,8 +713,8 @@ def create_coral(params):
         convert_to_mesh(obj)
 
     coral = join_objects(objects, name="Coral")
-    finalize_mesh(coral, remesh_voxel=max(0.10 * scale, 0.07), decimate_ratio=0.95)
-    return coral, (0, 0, 2.2 * scale), 1.25 * scale
+    finalize_mesh(coral, remesh_voxel=max(0.09 * branch_thickness, 0.07), decimate_ratio=0.95)
+    return coral, (0, 0, 2.2 * height_scale), 0.95 + 0.52 * pow(scale, 0.74)
 
 def create_cartoon_fish_body(scale: float):
     mesh = bpy.data.meshes.new("CartoonFishBody")
@@ -1060,10 +1073,16 @@ def build_shape_params(
 ) -> dict[str, Any]:
     total = agg["total"]
 
-    size_factor = scale_total(total, source_max, 0.80, 1.75) * base_radius_multiplier
-    density_factor = scale_total(total, source_max, 0.85, 1.65) * branch_density_multiplier
-    thickness_factor = scale_total(total, source_max, 0.90, 1.35) * branch_thickness_multiplier
-    height_factor = scale_total(total, source_max, 0.85, 1.45) * core_height_multiplier
+    if shape_family == "coral":
+        size_factor = scale_total(total, source_max, 0.82, 2.30) * base_radius_multiplier
+        density_factor = scale_total(total, source_max, 0.90, 1.75) * branch_density_multiplier
+        thickness_factor = scale_total(total, source_max, 0.92, 1.18) * branch_thickness_multiplier
+        height_factor = scale_total(total, source_max, 0.90, 1.95) * core_height_multiplier
+    else:
+        size_factor = scale_total(total, source_max, 0.80, 1.75) * base_radius_multiplier
+        density_factor = scale_total(total, source_max, 0.85, 1.65) * branch_density_multiplier
+        thickness_factor = scale_total(total, source_max, 0.90, 1.35) * branch_thickness_multiplier
+        height_factor = scale_total(total, source_max, 0.85, 1.45) * core_height_multiplier
 
     return {
         "shape_family": shape_family,
@@ -1222,7 +1241,10 @@ def process_openscad_job(job_id: str, request_data: dict[str, Any], agg: dict[st
     main_stl_path = OUTPUT_DIR / main_stl_name
     main_png_path = OUTPUT_DIR / main_png_name
 
-    size_factor = scale_total(total, source_max, 0.85, 1.55)
+    if shape_family == "seaweed":
+        size_factor = scale_total(total, source_max, 0.85, 2.10)
+    else:
+        size_factor = scale_total(total, source_max, 0.85, 1.55)
 
     if shape_family == "starfish":
         scad_code = render_simple_scad(SCAD_STARFISH, title=title, size_factor=size_factor)
