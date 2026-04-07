@@ -117,6 +117,8 @@ uvicorn app.main:app --host 0.0.0.0 --port 8000
 curl -fsSL https://raw.githubusercontent.com/s3rdl/ocean-reef/main/scripts/update_ocean_reef.sh | REPO_DIR="$HOME/ocean-reef" BRANCH="main" bash
 ```
 
+Use `scripts/update_ocean_reef.sh` as the canonical updater script.
+
 ---
 
 ## 🎛 Export Modes
