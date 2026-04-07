@@ -111,6 +111,12 @@ pip install -r requirements.txt
 uvicorn app.main:app --host 0.0.0.0 --port 8000
 ```
 
+## ⚡ One-shot Linux update/install
+
+```bash
+curl -fsSL https://raw.githubusercontent.com/s3rdl/ocean-reef/main/scripts/update_ocean_reef.sh | REPO_DIR="$HOME/ocean-reef" BRANCH="main" bash
+```
+
 ---
 
 ## 🎛 Export Modes
