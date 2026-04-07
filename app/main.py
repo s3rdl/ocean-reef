@@ -43,8 +43,8 @@ for directory in (DATA_DIR, GENERATED_DIR, OUTPUT_DIR, BLENDER_DIR):
 
 app = FastAPI(title="Ocean Prototype UI")
 
-BASIC_AUTH_USERNAME = os.getenv("OCEAN_UI_USERNAME", "oceanreef")
-BASIC_AUTH_PASSWORD = os.getenv("OCEAN_UI_PASSWORD", "greenpeace")
+BASIC_AUTH_USERNAME = os.getenv("OCEAN_UI_USERNAME", "PUT_USERNAME_HERE")
+BASIC_AUTH_PASSWORD = os.getenv("OCEAN_UI_PASSWORD", "PUT_PASSWORD_HERE")
 
 
 def _basic_auth_unauthorized() -> Response:
