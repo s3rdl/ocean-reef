@@ -42,6 +42,17 @@ Phase D+ evolves the system into a **hybrid geometry pipeline** combining:
 - Simple HTTP Basic Auth added
 - Prevents public access to the UI
 - Suitable for quick internal deployments
+- Credentials come from env vars: `OCEAN_UI_USERNAME` and `OCEAN_UI_PASSWORD`
+
+Set credentials before starting the app:
+
+```bash
+export OCEAN_UI_USERNAME="oceanreef"
+export OCEAN_UI_PASSWORD="change-me"
+uvicorn app.main:app --host 0.0.0.0 --port 8000
+```
+
+For persistent Linux deployments (systemd), put them in the service file under `[Service]` as `Environment=` entries.
 
 ---
 
